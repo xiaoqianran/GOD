@@ -1,0 +1,5 @@
+start_t: "2026-05-11T08:20:00+08:00"
+steps:
+  - type: run
+    num_steps: 4
+    tick: 1800

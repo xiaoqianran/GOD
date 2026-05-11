@@ -1,0 +1,38 @@
+.DS_Store
+/.env
+/.env.*
+!/.env.example
+.god/
+.live/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+build/
+coverage/
+test-results/
+
+# Runtime data
+*.log
+*.db
+*.sqlite
+*.sqlite3
+logs/
+agentsociety_data/
+agentsociety/agentsociety_data/
+agentsociety/logs/
+jiuwenclaw/logs/
+agentsociety/quick_experiments/**/run/
+agentsociety/quick_experiments/**/run_*/
+agentsociety/quick_experiments/**/run_failed*/
+agentsociety/quick_experiments/**/run_stuck*/
+agentsociety/quick_experiments/**/run_launcher.log
