@@ -21,13 +21,14 @@ import {
     CaretRightOutlined,
     PauseOutlined,
     SendOutlined,
+    SettingOutlined,
     StepBackwardOutlined,
     StepForwardOutlined,
     UserAddOutlined,
     ZoomInOutlined,
     ZoomOutOutlined,
 } from '@ant-design/icons';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { fetchCustom } from '../../components/fetch';
 import { AgentBuilderPanel } from '../AgentBuilder';
 import './style.css';
@@ -1039,6 +1040,7 @@ function updateSelection(bridge: PhaserBridge) {
 
 export default function PixelReplay() {
     const [messageApi, messageContextHolder] = message.useMessage();
+    const navigate = useNavigate();
     const { hypothesisId, experimentId } = useParams();
     const [searchParams] = useSearchParams();
     const effectiveHypothesisId = hypothesisId ?? DEFAULT_HYPOTHESIS_ID;
@@ -1633,6 +1635,11 @@ export default function PixelReplay() {
                     {liveStatus && <Tag color="geekblue">Live 已执行 {liveStatus.step_count} 步</Tag>}
                     <Text>{formatTime(bundle?.t ?? timeline[currentIndex]?.t)}</Text>
                     {stepLoading && <Spin size="small" />}
+                    <Tooltip title="创建或配置一个新的实验副本">
+                        <Button icon={<SettingOutlined />} onClick={() => navigate('/setup')}>
+                            新实验
+                        </Button>
+                    </Tooltip>
                 </Space>
                 <input
                     className="pixel-replay-range"

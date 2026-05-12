@@ -37,3 +37,6 @@ agentsociety/quick_experiments/**/run_*/
 agentsociety/quick_experiments/**/run_failed*/
 agentsociety/quick_experiments/**/run_stuck*/
 agentsociety/quick_experiments/**/run_launcher.log
+agentsociety/quick_experiments/hypothesis_*/
+!agentsociety/quick_experiments/hypothesis_god_town/
+!agentsociety/quick_experiments/hypothesis_god_town/**

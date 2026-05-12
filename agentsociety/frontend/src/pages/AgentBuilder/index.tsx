@@ -7,12 +7,10 @@ import {
     Divider,
     Form,
     Input,
-    InputNumber,
     Modal,
     Popconfirm,
     Radio,
     Row,
-    Select,
     Space,
     Table,
     Tag,
@@ -34,26 +32,20 @@ import {
 import { useSearchParams } from 'react-router-dom';
 import RootLayout from '../../Layout';
 import { fetchCustom } from '../../components/fetch';
+import { AgentEditorModal } from './AgentEditorModal';
+import {
+    jsonStringify,
+    type AgentClassInfo,
+    type AgentFormValues,
+    type AgentRecord,
+} from './agentEditor';
 
 const { Text, Paragraph } = Typography;
-
-type AgentRecord = {
-    agent_id: number;
-    agent_type: string;
-    kwargs: Record<string, any>;
-};
 
 type InitConfigPayload = {
     env_modules: Array<{ module_type: string; kwargs: Record<string, any> }>;
     agents: AgentRecord[];
     codegen_router?: { final_summary_enabled?: boolean };
-};
-
-type AgentClassInfo = {
-    type: string;
-    class_name: string;
-    description?: string;
-    is_custom?: boolean;
 };
 
 type ImportPreviewRow = {
@@ -68,14 +60,6 @@ type ImportPreview = {
     rows: ImportPreviewRow[];
     valid_count: number;
     invalid_count: number;
-};
-
-type AgentFormValues = {
-    agent_id: number;
-    agent_type: string;
-    name: string;
-    profile_json: string;
-    kwargs_json: string;
 };
 
 type AgentBuilderPanelProps = {
@@ -105,20 +89,6 @@ const DEFAULT_JIUWEN_KWARGS = {
 };
 const STORAGE_KEY = 'agentsociety.agentBuilder.workspacePath';
 
-const jsonStringify = (value: any) => JSON.stringify(value ?? {}, null, 2);
-
-const parseJsonObject = (value: string, label: string) => {
-    try {
-        const parsed = JSON.parse(value || '{}');
-        if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
-            throw new Error(`${label} must be a JSON object`);
-        }
-        return parsed;
-    } catch (error) {
-        throw new Error(`${label}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-};
-
 const getAgentName = (agent: AgentRecord) => {
     const kwargs = agent.kwargs || {};
     const profile = kwargs.profile;
@@ -140,22 +110,6 @@ const getDuplicateIds = (agents: AgentRecord[]) => {
         seen.add(agent.agent_id);
     });
     return duplicates;
-};
-
-const buildAgentFromForm = (values: AgentFormValues): AgentRecord => {
-    const profile = parseJsonObject(values.profile_json, 'profile_json');
-    const extraKwargs = parseJsonObject(values.kwargs_json, 'kwargs_json');
-    profile.name = profile.name || values.name;
-    return {
-        agent_id: Number(values.agent_id),
-        agent_type: values.agent_type,
-        kwargs: {
-            ...extraKwargs,
-            id: Number(values.agent_id),
-            name: values.name,
-            profile,
-        },
-    };
 };
 
 const findDefaultAgentType = (classes: AgentClassInfo[]) => {
@@ -347,19 +301,13 @@ export const AgentBuilderPanel: React.FC<AgentBuilderPanelProps> = ({
         setAgentModalOpen(true);
     };
 
-    const upsertAgent = async () => {
+    const upsertAgent = async (agent: AgentRecord) => {
         if (!config) return;
-        try {
-            const values = await form.validateFields();
-            const agent = buildAgentFromForm(values);
-            const nextAgents = editingAgentId === null
-                ? [...agents, agent]
-                : agents.map((item) => item.agent_id === editingAgentId ? agent : item);
-            setConfig({ ...config, agents: nextAgents });
-            setAgentModalOpen(false);
-        } catch (error) {
-            message.error(error instanceof Error ? error.message : 'Agent form is invalid.');
-        }
+        const nextAgents = editingAgentId === null
+            ? [...agents, agent]
+            : agents.map((item) => item.agent_id === editingAgentId ? agent : item);
+        setConfig({ ...config, agents: nextAgents });
+        setAgentModalOpen(false);
     };
 
     const deleteAgent = (agentId: number) => {
@@ -590,46 +538,14 @@ export const AgentBuilderPanel: React.FC<AgentBuilderPanelProps> = ({
                     />
             </Card>
 
-            <Modal
-                title={editingAgentId === null ? 'Add Agent' : 'Edit Agent'}
+            <AgentEditorModal
                 open={agentModalOpen}
-                onOk={upsertAgent}
+                editingAgentId={editingAgentId}
+                form={form}
+                agentClasses={agentClasses}
+                onSave={upsertAgent}
                 onCancel={() => setAgentModalOpen(false)}
-                width={760}
-                destroyOnHidden
-            >
-                <Form form={form} layout="vertical">
-                    <Row gutter={12}>
-                        <Col span={8}>
-                            <Form.Item name="agent_id" label="Agent ID" rules={[{ required: true }]}>
-                                <InputNumber min={0} style={{ width: '100%' }} />
-                            </Form.Item>
-                        </Col>
-                        <Col span={8}>
-                            <Form.Item name="agent_type" label="Agent Type" rules={[{ required: true }]}>
-                                <Select
-                                    showSearch
-                                    options={agentClasses.map((item) => ({
-                                        value: item.type,
-                                        label: `${item.type}${item.is_custom ? ' (custom)' : ''}`,
-                                    }))}
-                                />
-                            </Form.Item>
-                        </Col>
-                        <Col span={8}>
-                            <Form.Item name="name" label="Name" rules={[{ required: true }]}>
-                                <Input />
-                            </Form.Item>
-                        </Col>
-                    </Row>
-                    <Form.Item name="profile_json" label="Profile JSON" rules={[{ required: true }]}>
-                        <Input.TextArea rows={8} spellCheck={false} />
-                    </Form.Item>
-                    <Form.Item name="kwargs_json" label="Extra kwargs JSON">
-                        <Input.TextArea rows={6} spellCheck={false} />
-                    </Form.Item>
-                </Form>
-            </Modal>
+            />
 
             <Modal
                 title="Batch Import Agents"

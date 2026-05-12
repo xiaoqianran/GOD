@@ -9,6 +9,7 @@ from . import (
     agent_skills,
     live_experiments,
     experiment_configs,
+    god_setup,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "agent_skills",
     "live_experiments",
     "experiment_configs",
+    "god_setup",
 ]

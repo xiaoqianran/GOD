@@ -19,6 +19,8 @@ mkdir -p "$LOG_DIR" "$PID_DIR" "$RUN_DIR"
 BACKEND_PID_FILE="$PID_DIR/backend.pid"
 FRONTEND_PID_FILE="$PID_DIR/frontend.pid"
 RUNTIME_PID_FILE="$PID_DIR/runtime.pid"
+CURRENT_EXPERIMENT_FILE="$STATE_DIR/current_experiment.json"
+START_REQUEST_FILE="$RUN_DIR/start-request.json"
 
 RUNTIME_INSTANCE="${RUNTIME_INSTANCE:-god-town}"
 RUNTIME_MODE="${RUNTIME_MODE:-dev}"
@@ -52,10 +54,11 @@ die() {
 
 usage() {
   cat <<EOF
-Usage: ./scripts/god.sh [menu|setup|start|restart|new-run|stop|status|tail|open]
+Usage: ./scripts/god.sh [menu|setup|configure|start|restart|new-run|stop|status|tail|open]
 
 menu      Interactive menu.
 setup     Install or check Python and Node dependencies only.
+configure Open the experiment setup wizard and wait for a new experiment request.
 start     Start GOD (idempotent; reuses running services) and open frontend pages.
 restart   Stop everything cleanly, then start.
 new-run   Stop, wipe the current run, then start a fresh session.
@@ -90,6 +93,39 @@ refresh_derived() {
   runtime_ui_url="http://localhost:$RUNTIME_UI_PORT"
 }
 
+load_current_experiment() {
+  [[ -f "$CURRENT_EXPERIMENT_FILE" ]] || return 0
+  local exports
+  exports="$(
+    python3 - "$CURRENT_EXPERIMENT_FILE" <<'PY'
+import json
+import shlex
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+try:
+    data = json.loads(path.read_text(encoding="utf-8"))
+except Exception:
+    raise SystemExit(0)
+if not isinstance(data, dict):
+    raise SystemExit(0)
+
+mapping = {
+    "GOD_EXPERIMENT": data.get("hypothesis_id"),
+    "GOD_EXPERIMENT_RUN": data.get("experiment_id"),
+    "LIVE_WORKSPACE_PATH": data.get("workspace_path"),
+}
+for key, value in mapping.items():
+    if value:
+        print(f"{key}={shlex.quote(str(value))}")
+PY
+  )"
+  [[ -n "$exports" ]] || return 0
+  eval "$exports"
+  export GOD_EXPERIMENT GOD_EXPERIMENT_RUN LIVE_WORKSPACE_PATH
+}
+
 load_env() {
   if [[ -f "$ENV_FILE" ]]; then
     set -a
@@ -97,8 +133,10 @@ load_env() {
     source "$ENV_FILE"
     set +a
   fi
-  refresh_derived
   export_internal_env
+  load_current_experiment
+  export_internal_env
+  refresh_derived
 }
 
 # Map outward-facing GOD_* config to the internal env names the backend and
@@ -235,6 +273,14 @@ ensure_env_file() {
 
   load_env
 
+  if [[ "${GOD_SETUP_MODE:-0}" == "1" ]]; then
+    set_env_value "GOD_LLM_API_BASE" "${GOD_LLM_API_BASE:-https://api.openai.com/v1}"
+    set_env_value "GOD_LLM_MODEL" "${GOD_LLM_MODEL:-gpt-5.4}"
+    set_env_value "GOD_EMBEDDING_MODEL" "${GOD_EMBEDDING_MODEL:-text-embedding-3-large}"
+    load_env
+    return 0
+  fi
+
   if [[ -z "${GOD_LLM_API_KEY:-}" ]]; then
     if [[ -t 0 ]]; then
       printf '[GOD] LLM API key is required. Paste it now (input hidden): '
@@ -360,8 +406,9 @@ print_frontend_links() {
 
 open_browser_window() {
   local url="$1"
+  [[ "${GOD_OPEN_BROWSER:-1}" == "1" ]] || return 0
   if command_exists open; then
-    open -n "$url" >/dev/null 2>&1 || open "$url" >/dev/null 2>&1 || true
+    open "$url" >/dev/null 2>&1 || true
   fi
 }
 
@@ -370,6 +417,31 @@ open_frontend_pages() {
   log "Opening frontend pages"
   open_browser_window "$(replay_url)"
   open_browser_window "$runtime_ui_url"
+}
+
+setup_url() {
+  printf '%s/setup\n' "$frontend_url"
+}
+
+open_setup_page() {
+  log "Opening setup wizard"
+  open_browser_window "$(setup_url)"
+  printf 'Setup wizard:     %s\n' "$(setup_url)"
+}
+
+has_ready_start_config() {
+  load_env
+  [[ -n "${GOD_LLM_API_KEY:-}" ]] || return 1
+  [[ -f "$CURRENT_EXPERIMENT_FILE" ]] || return 1
+  local config_path="$LIVE_WORKSPACE_PATH/hypothesis_${GOD_EXPERIMENT}/experiment_${GOD_EXPERIMENT_RUN}/init/init_config.json"
+  [[ -f "$config_path" ]] || return 1
+}
+
+stop_control_services() {
+  kill_pid_file "$FRONTEND_PID_FILE" "control room"
+  kill_pid_file "$BACKEND_PID_FILE" "backend"
+  kill_listeners_on_port "$GOD_FRONTEND_PORT"
+  kill_listeners_on_port "$GOD_BACKEND_PORT"
 }
 
 kill_pid_file() {
@@ -778,6 +850,9 @@ start_backend() {
   local backend_cmd
   backend_cmd="cd $(shell_quote "$BACKEND_ROOT")"
   backend_cmd+=" && set -a && source $(shell_quote "$ENV_FILE") && set +a"
+  backend_cmd+=" && export GOD_ROOT=$(shell_quote "$ROOT_DIR")"
+  backend_cmd+=" && export GOD_ENV_FILE=$(shell_quote "$ENV_FILE")"
+  backend_cmd+=" && export LIVE_WORKSPACE_PATH=$(shell_quote "$LIVE_WORKSPACE_PATH")"
   backend_cmd+=" && export AGENTSOCIETY_LLM_API_KEY=\"\${GOD_LLM_API_KEY:-}\""
   backend_cmd+=" && export AGENTSOCIETY_LLM_API_BASE=\"\${GOD_LLM_API_BASE:-https://api.openai.com/v1}\""
   backend_cmd+=" && export AGENTSOCIETY_LLM_MODEL=\"\${GOD_LLM_MODEL:-gpt-5.4}\""
@@ -819,6 +894,87 @@ start_frontend() {
   wait_for_port "$GOD_FRONTEND_PORT" "Control room" 120
 }
 
+start_setup_services() {
+  setup_deps
+  export GOD_SETUP_MODE=1
+  ensure_env_file
+  rm -f "$START_REQUEST_FILE"
+  stop_control_services
+  start_backend
+  start_frontend
+  open_setup_page
+}
+
+wait_for_start_request() {
+  log "Waiting for setup wizard to save and request startup"
+  local next_notice=$((SECONDS + 30))
+  while [[ ! -f "$START_REQUEST_FILE" ]]; do
+    sleep 2
+    if (( SECONDS >= next_notice )); then
+      log "Still waiting on $(setup_url)"
+      next_notice=$((SECONDS + 30))
+    fi
+  done
+
+  local parsed hypothesis_id experiment_id workspace_path
+  parsed="$(
+    python3 - "$START_REQUEST_FILE" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+data = json.loads(path.read_text(encoding="utf-8"))
+print(
+    "\t".join(
+        [
+            str(data.get("hypothesis_id") or ""),
+            str(data.get("experiment_id") or "1"),
+            str(data.get("workspace_path") or ""),
+        ]
+    )
+)
+PY
+  )" || die "Could not read setup start request"
+  IFS=$'\t' read -r hypothesis_id experiment_id workspace_path <<< "$parsed"
+  [[ -n "$hypothesis_id" ]] || die "Setup start request is missing hypothesis_id"
+  mv "$START_REQUEST_FILE" "$START_REQUEST_FILE.consumed" 2>/dev/null || rm -f "$START_REQUEST_FILE"
+
+  export GOD_EXPERIMENT="$hypothesis_id"
+  export GOD_EXPERIMENT_RUN="${experiment_id:-1}"
+  if [[ -n "$workspace_path" ]]; then
+    export LIVE_WORKSPACE_PATH="$workspace_path"
+  fi
+  load_env
+  log "Received start request: $GOD_EXPERIMENT / experiment_$GOD_EXPERIMENT_RUN"
+}
+
+start_with_setup_if_needed() {
+  require_base_tools
+  load_env
+  if has_ready_start_config; then
+    start_all
+    return 0
+  fi
+
+  log "No complete experiment configuration found; starting setup wizard first"
+  start_setup_services
+  wait_for_start_request
+  unset GOD_SETUP_MODE
+  stop_control_services
+  start_all
+}
+
+configure_experiment() {
+  require_base_tools
+  log "Starting new experiment setup wizard"
+  start_setup_services
+  wait_for_start_request
+  unset GOD_SETUP_MODE
+  stop_control_services
+  start_all
+}
+
 create_session() {
   if ! is_port_open "$GOD_BACKEND_PORT" || ! curl -fsS "$backend_url/health" >/dev/null 2>&1; then
     start_backend
@@ -840,6 +996,7 @@ create_session() {
 }
 
 start_all() {
+  load_env
   setup_deps
   ensure_env_file
   prepare_experiment
@@ -853,11 +1010,12 @@ start_all() {
 restart_all() {
   require_base_tools
   stop_all
-  start_all
+  start_with_setup_if_needed
 }
 
 new_run() {
   require_base_tools
+  load_env
   export GOD_SESSION_PREFIX="${GOD_EXPERIMENT}_fresh_$(date +%Y%m%d_%H%M%S)"
   stop_all
   local run_dir="$LIVE_WORKSPACE_PATH/hypothesis_${GOD_EXPERIMENT}/experiment_${GOD_EXPERIMENT_RUN}/run"
@@ -916,22 +1074,24 @@ GOD - Govern, Observe, Direct
 1. Start
 2. Restart
 3. New run (reset replay and start fresh)
-4. Status
-5. Stop
-6. Tail logs
-7. Setup dependencies only
+4. Configure new experiment
+5. Status
+6. Stop
+7. Tail logs
+8. Setup dependencies only
 
 EOF
   printf 'Choose: '
   read -r choice
   case "$choice" in
-    1|"") start_all ;;
+    1|"") start_with_setup_if_needed ;;
     2) restart_all ;;
     3) new_run ;;
-    4) print_status ;;
-    5) stop_all ;;
-    6) tail_logs ;;
-    7) setup_deps; ensure_env_file ;;
+    4) configure_experiment; open_frontend_pages ;;
+    5) print_status ;;
+    6) stop_all ;;
+    7) tail_logs ;;
+    8) setup_deps; GOD_SETUP_MODE=1 ensure_env_file ;;
     *) usage; exit 2 ;;
   esac
 }
@@ -945,10 +1105,14 @@ case "$ACTION" in
     ;;
   setup)
     setup_deps
-    ensure_env_file
+    GOD_SETUP_MODE=1 ensure_env_file
+    ;;
+  configure)
+    configure_experiment
+    open_frontend_pages
     ;;
   start)
-    start_all
+    start_with_setup_if_needed
     open_frontend_pages
     ;;
   restart)
