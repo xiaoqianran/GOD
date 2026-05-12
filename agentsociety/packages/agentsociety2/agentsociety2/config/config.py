@@ -9,7 +9,8 @@
 - :func:`~agentsociety2.config.config.extract_json`：从 LLM 响应文本中提取 JSON 片段。
 
 .. important::
-   ``AGENTSOCIETY_LLM_API_KEY`` 与 ``AGENTSOCIETY_LLM_API_BASE`` 在模块导入时校验；未配置会直接抛出异常。
+   ``AGENTSOCIETY_LLM_API_KEY`` 与 ``AGENTSOCIETY_LLM_API_BASE`` 在创建 LLM Router
+   或启动实验时校验。这样只需要配置向导的后端也能在缺少 API key 时启动。
 """
 
 from __future__ import annotations
@@ -754,17 +755,9 @@ class Config:
         return MemoryConfig.model_validate(memory_config)
 
 
-# Validate required configuration at module load time
-if not Config.LLM_API_KEY:
-    raise ValueError(
-        "AGENTSOCIETY_LLM_API_KEY is required. "
-        "Please set this environment variable before running AgentSociety2."
-    )
-if not Config.LLM_API_BASE:
-    raise ValueError(
-        "AGENTSOCIETY_LLM_API_BASE is required. "
-        "Please set this environment variable before running AgentSociety2."
-    )
+# Required model configuration is intentionally validated when a model router is
+# created or an experiment starts, not at module import time. The GOD setup UI
+# needs the backend to boot before the operator has entered an API key.
 
 
 # Global router instances (lazy initialization)

@@ -6,6 +6,7 @@ import { ConfigProvider, ThemeConfig } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import PixelReplay from './pages/PixelReplay'
 import AgentBuilder from './pages/AgentBuilder'
+import SetupPage from './pages/Setup'
 
 const router = createBrowserRouter([
     {
@@ -23,6 +24,10 @@ const router = createBrowserRouter([
     {
         path: "/agent-builder",
         element: <AgentBuilder />,
+    },
+    {
+        path: "/setup",
+        element: <SetupPage />,
     },
     {
         path: "*",

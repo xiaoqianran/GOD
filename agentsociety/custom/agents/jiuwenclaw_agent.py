@@ -96,6 +96,7 @@ class JiuwenClawAgent(AgentBase):
         daily_life_skill_path: str | None = None,
         enable_skill_runtime: bool = True,
         skill_runtime_skill_names: list[str] | None = None,
+        experiment_context: Any | None = None,
     ) -> None:
         super().__init__(id=id, profile=profile, name=name)
         self._jiuwenclaw_ws_url = jiuwenclaw_ws_url
@@ -108,6 +109,7 @@ class JiuwenClawAgent(AgentBase):
         self._enable_daily_life = bool(enable_daily_life)
         self._daily_life_skill_path = daily_life_skill_path
         self._enable_skill_runtime = bool(enable_skill_runtime)
+        self._experiment_context = experiment_context
         self._skill_runtime_skill_names = list(
             skill_runtime_skill_names or DEFAULT_RUNTIME_SKILLS
         )
@@ -196,7 +198,16 @@ Initialization example:
                 "daily_life_skill_path": self._daily_life_skill_path,
                 "enable_skill_runtime": self._enable_skill_runtime,
                 "skill_runtime_skill_names": list(self._skill_runtime_skill_names),
+                "experiment_context": _json_safe(self._experiment_context),
             },
+        )
+
+    def _experiment_context_text(self) -> str:
+        if not self._experiment_context:
+            return ""
+        return (
+            "\nExperiment context:\n"
+            f"{json.dumps(_json_safe(self._experiment_context), ensure_ascii=False)}\n"
         )
 
     async def ask(self, message: str, readonly: bool = True) -> str:
@@ -706,6 +717,7 @@ Initialization example:
             "channel_id": self._channel_id,
             "enable_skill_runtime": self._enable_skill_runtime,
             "skill_runtime_skill_names": list(self._skill_runtime_skill_names),
+            "experiment_context": _json_safe(self._experiment_context),
             "last_response": self._last_response,
             "last_environment_result": self._last_environment_result,
             "pending_interventions": list(self._pending_interventions),
@@ -735,6 +747,8 @@ Initialization example:
         self._enable_skill_runtime = bool(
             dump_data.get("enable_skill_runtime", self._enable_skill_runtime)
         )
+        if "experiment_context" in dump_data:
+            self._experiment_context = dump_data["experiment_context"]
         skill_names = dump_data.get("skill_runtime_skill_names")
         if isinstance(skill_names, list):
             self._skill_runtime_skill_names = [
@@ -779,6 +793,7 @@ Initialization example:
             f"Agent id: {self.id}\n"
             f"Agent name: {self.name}\n"
             f"Profile: {json.dumps(_json_safe(self.get_profile()), ensure_ascii=False)}\n"
+            f"{self._experiment_context_text()}"
             f"Constraint: {readonly_text}\n\n"
             f"User/environment question:\n{message}"
         )
@@ -825,6 +840,7 @@ Initialization example:
             f"Agent id: {self.id}\n"
             f"Agent name: {self.name}\n"
             f"Profile: {json.dumps(_json_safe(self.get_profile()), ensure_ascii=False)}\n"
+            f"{self._experiment_context_text()}"
             f"Simulation time: {t.isoformat()}\n"
             f"Tick seconds: {tick}\n"
             f"Environment observation:\n{observation}"

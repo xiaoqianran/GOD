@@ -16,6 +16,7 @@ FastAPI backend service for AI Social Scientist VSCode extension
 - @packages/agentsociety2/agentsociety2/backend/routers/modules.py - /api/v1/modules
 - @packages/agentsociety2/agentsociety2/backend/routers/agent_skills.py - /api/v1/agent-skills
 - @packages/agentsociety2/agentsociety2/backend/routers/experiment_configs.py - /api/v1/experiment-configs
+- @packages/agentsociety2/agentsociety2/backend/routers/god_setup.py - /api/v1/god/setup
 """
 
 from __future__ import annotations
@@ -38,6 +39,7 @@ from agentsociety2.backend.routers import (
     agent_skills,
     live_experiments,
     experiment_configs,
+    god_setup,
 )
 
 # 加载环境变量
@@ -121,6 +123,7 @@ app.include_router(modules.router)
 app.include_router(agent_skills.router)
 app.include_router(live_experiments.router, prefix="/api/v1")
 app.include_router(experiment_configs.router)
+app.include_router(god_setup.router)
 
 
 @app.get("/")
@@ -139,6 +142,7 @@ async def root():
             "agent_skills": "/api/v1/agent-skills/*",
             "live_experiments": "/api/v1/live-experiments/{hypothesis_id}/{experiment_id}/*",
             "experiment_configs": "/api/v1/experiment-configs/{hypothesis_id}/{experiment_id}/*",
+            "god_setup": "/api/v1/god/setup/*",
         },
     }
 

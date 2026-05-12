@@ -59,7 +59,7 @@ cd GOD
 ./scripts/god.sh start
 ```
 
-On the first run, GOD asks for three model settings:
+On the first run, GOD opens the setup wizard at `/setup` before creating a live session. The wizard lets you configure model settings, describe a scenario, ask the GOD agent to generate an experiment draft, edit the generated profiles/steps, and then save a new experiment copy.
 
 | Variable | Example |
 | --- | --- |
@@ -67,7 +67,7 @@ On the first run, GOD asks for three model settings:
 | `GOD_LLM_API_BASE` | `https://api.openai.com/v1` |
 | `GOD_LLM_MODEL` | `gpt-5.4` |
 
-Any OpenAI-compatible endpoint works. When the stack is ready, open:
+Any OpenAI-compatible endpoint works. When the stack is ready, open the URL printed by the script, for example:
 
 ```
 http://127.0.0.1:5174/pixel-replay/god_town/1
@@ -82,6 +82,7 @@ Full walkthrough: **[Quickstart →](QUICKSTART.md)**
 | 🎬 | **Replay control** | Scrub a live or recorded experiment by step, pause, auto-run. |
 | 💬 | **Targeted ask** | Direct natural-language questions to one agent or to everyone. |
 | 🎛️ | **Step interventions** | Inject instructions for the next step; the simulation reacts immediately. |
+| 🧪 | **Experiment setup wizard** | Configure models and scenarios in the browser, generate editable agent profiles, then launch a new experiment copy. |
 | 🧼 | **Fresh runs** | One command to wipe a stale run and re-seed a clean simulation. |
 | 🗺️ | **Pixel town world** | Locations, actions, messages, and agent status, all replay-friendly. |
 | 🛠️ | **Single config** | One `.env`, one script, sane defaults. |
@@ -108,6 +109,7 @@ flowchart LR
 
 ```bash
 ./scripts/god.sh start      # start the full stack (idempotent)
+./scripts/god.sh configure  # open the setup wizard for a new experiment copy
 ./scripts/god.sh restart    # stop everything cleanly, then start again
 ./scripts/god.sh new-run    # wipe replay data and start a fresh session
 ./scripts/god.sh status     # ports, URLs, model status

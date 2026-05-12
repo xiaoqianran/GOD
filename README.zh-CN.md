@@ -59,7 +59,7 @@ cd GOD
 ./scripts/god.sh start
 ```
 
-首次运行会询问三个模型配置：
+首次运行会先打开 `/setup` 配置向导，不会立刻创建 live session。你可以在页面里配置模型、填写实验背景，让 GOD agent 生成实验草案，再编辑 agent profile / steps，最后保存为新的实验副本并启动。
 
 | 变量 | 示例 |
 | --- | --- |
@@ -67,7 +67,7 @@ cd GOD
 | `GOD_LLM_API_BASE` | `https://api.openai.com/v1` |
 | `GOD_LLM_MODEL` | `gpt-5.4` |
 
-任意 OpenAI 兼容接口都可以。启动完成后打开：
+任意 OpenAI 兼容接口都可以。启动完成后打开脚本打印的地址，例如：
 
 ```
 http://127.0.0.1:5174/pixel-replay/god_town/1
@@ -82,6 +82,7 @@ http://127.0.0.1:5174/pixel-replay/god_town/1
 | 🎬 | **Replay 控制** | 在 live 或回放里按 step 拖动、暂停、自动推进。 |
 | 💬 | **定向提问** | 用自然语言向某个 Agent 或所有居民提问。 |
 | 🎛️ | **Step 干预** | 给下一个 step 注入指令，立即生效。 |
+| 🧪 | **实验配置向导** | 在浏览器里配置模型和背景设定，生成可编辑 agent profiles，再启动新实验副本。 |
 | 🧼 | **重新开跑** | 一条命令清掉旧数据，重新种一个干净实验。 |
 | 🗺️ | **像素小镇世界** | 地点、行为、消息、状态都是 replay 友好的结构化数据。 |
 | 🛠️ | **单一配置** | 一个 `.env`、一个脚本，默认值已经够用。 |
@@ -108,6 +109,7 @@ flowchart LR
 
 ```bash
 ./scripts/god.sh start      # 启动完整栈（可重复执行）
+./scripts/god.sh configure  # 打开配置向导，创建新的实验副本
 ./scripts/god.sh restart    # 先干净停止，再重新启动
 ./scripts/god.sh new-run    # 清掉 replay 数据，开一个新的 session
 ./scripts/god.sh status     # 查看端口、URL、模型状态

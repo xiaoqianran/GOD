@@ -43,9 +43,10 @@ cd GOD
 第一次运行会自动完成：
 
 1. 从 `.env.example` 创建 `.env`。
-2. 询问 LLM API key、API base URL、模型名。
-3. 安装 Python 和 Node 依赖。
-4. 启动完整栈，创建 live session，并先跑完第 1 步。
+2. 安装 Python 和 Node 依赖。
+3. 启动 setup 模式的后端/控制台并打开 `/setup`。
+4. 等你在页面里配置模型、生成/编辑实验草案，并点击“保存并启动”。
+5. 启动完整栈，创建 live session，并先跑完第 1 步。
 
 需要的三个配置：
 
@@ -55,7 +56,11 @@ cd GOD
 | `GOD_LLM_API_BASE` | `https://api.openai.com/v1` |
 | `GOD_LLM_MODEL` | `gpt-5.4` |
 
-任意 OpenAI 兼容接口都可以。
+任意 OpenAI 兼容接口都可以。之后如果想创建另一个实验，运行：
+
+```bash
+./scripts/god.sh configure
+```
 
 ## 4. 打开控制台
 
@@ -89,6 +94,7 @@ http://127.0.0.1:5174/pixel-replay/god_town/1
 
 ```bash
 ./scripts/god.sh start    # 可重复执行；已运行的服务会被复用
+./scripts/god.sh configure # 通过配置向导创建新的实验副本
 ./scripts/god.sh restart  # 先干净停止，再重新启动
 ./scripts/god.sh stop     # 停止所有服务
 ./scripts/god.sh tail     # 跟随日志

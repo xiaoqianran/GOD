@@ -43,9 +43,10 @@ cd GOD
 The first run will:
 
 1. Create `.env` from `.env.example`.
-2. Prompt for the LLM API key, API base URL, and model name.
-3. Install Python + Node dependencies.
-4. Bring up the full stack, create a live session, and run the first step.
+2. Install Python + Node dependencies.
+3. Start the setup backend/control room and open `/setup`.
+4. Wait while you configure model settings, generate/edit an experiment draft, and click **Save and Start**.
+5. Bring up the full stack, create a live session, and run the first step.
 
 Three settings are required:
 
@@ -55,7 +56,11 @@ Three settings are required:
 | `GOD_LLM_API_BASE` | `https://api.openai.com/v1` |
 | `GOD_LLM_MODEL` | `gpt-5.4` |
 
-Any OpenAI-compatible endpoint works.
+Any OpenAI-compatible endpoint works. To create another experiment later, run:
+
+```bash
+./scripts/god.sh configure
+```
 
 ## 4. Open the control room
 
@@ -89,6 +94,7 @@ This wipes the previous run and starts a clean live session.
 
 ```bash
 ./scripts/god.sh start    # idempotent; reuses running services
+./scripts/god.sh configure # create a new experiment through the setup wizard
 ./scripts/god.sh restart  # stop everything cleanly, then start again
 ./scripts/god.sh stop     # stop everything
 ./scripts/god.sh tail     # follow logs
