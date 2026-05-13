@@ -823,7 +823,10 @@ start_runtime() {
   log "Starting agent runtime"
   : > "$LOG_DIR/runtime.log"
   local runtime_cmd
+  local runtime_data_dir
+  runtime_data_dir="$(runtime_workspace)"
   runtime_cmd="cd $(shell_quote "$RUNTIME_ROOT")"
+  runtime_cmd+=" && export JIUWENCLAW_DATA_DIR=$(shell_quote "$runtime_data_dir")"
   runtime_cmd+=" && export JIUWENCLAW_ROOT=$(shell_quote "$RUNTIME_ROOT")"
   runtime_cmd+=" && export JIUWENCLAW_PROJECT_ROOT=$(shell_quote "$RUNTIME_ROOT")"
   runtime_cmd+=" && export AGENT_SERVER_PORT=$(shell_quote "$RUNTIME_AGENT_PORT")"

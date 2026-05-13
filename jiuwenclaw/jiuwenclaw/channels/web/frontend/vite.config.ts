@@ -13,9 +13,15 @@ interface ErrorWithCode {
 
 /**
  * file-api 使用的项目根目录，需与后端 get_root_dir() 一致，前端编辑的 HEARTBEAT.md 才会被心跳读到。
- * 优先级：环境变量 > 已存在的用户工作区 ~/.jiuwenclaw > 仓库根。
+ * 优先级：命名实例数据目录 > 显式根目录 > 已存在的用户工作区 ~/.jiuwenclaw > 仓库根。
  */
 function resolveProjectRootDir(): string {
+  const envWorkspace = process.env.JIUWENCLAW_DATA_DIR
+  if (envWorkspace) {
+    const resolved = path.resolve(envWorkspace)
+    console.log('[file-api] 使用 JIUWENCLAW_DATA_DIR:', resolved)
+    return resolved
+  }
   const envRoot = process.env.JIUWENCLAW_ROOT || process.env.JIUWENCLAW_PROJECT_ROOT
   if (envRoot) {
     const resolved = path.resolve(envRoot)
@@ -24,12 +30,6 @@ function resolveProjectRootDir(): string {
   }
   const home = process.env.USERPROFILE || process.env.HOME || ''
   if (home) {
-    // 优先检查多实例环境变量
-    const envWorkspace = process.env.JIUWENCLAW_DATA_DIR
-    if (envWorkspace) {
-      console.log('[file-api] 使用 JIUWENCLAW_DATA_DIR:', path.resolve(envWorkspace))
-      return path.resolve(envWorkspace)
-    }
     const userWorkspace = path.join(home, '.jiuwenclaw')
     if (fs.existsSync(userWorkspace)) {
       console.log('[file-api] 使用用户工作区:', path.resolve(userWorkspace))
@@ -165,7 +165,7 @@ function devFileContentApi(): Plugin {
   const projectRootDir = resolveProjectRootDir()
   const workspaceRootDir = path.resolve(projectRootDir, 'agent')
   const webLogsRootDir = path.resolve(projectRootDir, '.logs')
-  const generateAgentFoldersScriptPath = path.resolve(__dirname, '../scripts/generate-agent-folders.js')
+  const generateAgentFoldersScriptPath = path.resolve(__dirname, '../../../scripts/generate-agent-folders.js')
   // dev 模式默认开启调试视图，与“前端 dev 即调试模式”一致。
   let wsDisableCompress = true
   const isMarkdownFile = (targetPath: string) => {
