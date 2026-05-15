@@ -80,13 +80,14 @@ class PixelTownSocialEnv(EnvBase):
         initial_locations: dict[str, str] | None = None,
         default_group_name: str = "Weekend Pixel Town Plan",
         map_manifest_path: str | None = None,
+        map_id: str | None = None,
         movement_tiles_per_second: float = 8.0,
         movement_min_steps_per_trip: int = 3,
     ) -> None:
         super().__init__()
         self._movement_tiles_per_second = float(movement_tiles_per_second)
         self._movement_min_steps_per_trip = max(1, int(movement_min_steps_per_trip))
-        self._map_manifest_path = self._resolve_manifest_path(map_manifest_path)
+        self._map_manifest_path = self._resolve_manifest_path(map_manifest_path, map_id)
         self._map_manifest = _load_structured_file(self._map_manifest_path)
         self._map_root = self._map_manifest_path.parent
         self._map_id = str(self._map_manifest.get("map_id") or self._map_manifest_path.parent.name)
@@ -129,15 +130,24 @@ class PixelTownSocialEnv(EnvBase):
         self._step_communications: list[dict[str, Any]] = []
         self._step_counter = 0
         self._current_phase = "setup"
-        self._latest_event = "Agents arrive in The Ville."
+        self._latest_event = f"Agents arrive in {self._map_manifest.get('display_name') or self._map_id}."
         self._lock = asyncio.Lock()
 
     @staticmethod
-    def _resolve_manifest_path(map_manifest_path: str | None) -> Path:
+    def _resolve_manifest_path(map_manifest_path: str | None, map_id: str | None = None) -> Path:
         if map_manifest_path:
             path = Path(map_manifest_path).expanduser()
-            return path if path.is_absolute() else (_repo_root() / path).resolve()
-        return (_repo_root() / "custom" / "maps" / "the_ville" / "town.yaml").resolve()
+            resolved = path if path.is_absolute() else (_repo_root() / path).resolve()
+            if resolved.exists():
+                return resolved
+        requested_map_id = str(map_id or "the_ville").strip() or "the_ville"
+        map_yaml = (_repo_root() / "custom" / "maps" / requested_map_id / "map.yaml").resolve()
+        if map_yaml.exists():
+            return map_yaml
+        town_yaml = (_repo_root() / "custom" / "maps" / requested_map_id / "town.yaml").resolve()
+        if town_yaml.exists():
+            return town_yaml
+        return (_repo_root() / "custom" / "maps" / "the_ville" / "map.yaml").resolve()
 
     def _load_manifest_semantics(self) -> None:
         locations = self._map_manifest.get("locations") or []

@@ -19,6 +19,14 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from agentsociety2.config import extract_json
+from agentsociety2.backend.services.map_packages import (
+    DEFAULT_MAP_ID,
+    MapPackage,
+    list_map_packages,
+    load_map_package,
+    map_package_summary,
+    relative_manifest_path,
+)
 from agentsociety2.society.models import InitConfig, StepsConfig
 
 router = APIRouter(prefix="/api/v1/god/setup", tags=["god-setup"])
@@ -30,6 +38,7 @@ ENV_DEFAULTS = {
     "GOD_EMBEDDING_MODEL": "text-embedding-3-large",
     "GOD_EXPERIMENT": "god_town",
     "GOD_EXPERIMENT_RUN": "1",
+    "GOD_MAP_ID": DEFAULT_MAP_ID,
     "GOD_BACKEND_HOST": "127.0.0.1",
     "GOD_BACKEND_PORT": "8001",
     "GOD_FRONTEND_PORT": "5174",
@@ -132,6 +141,7 @@ class DraftBasics(BaseModel):
     title: str = Field("斯坦福监狱实验适配模拟", min_length=1)
     background: str = Field(DEFAULT_DRAFT_BACKGROUND, min_length=1)
     agent_count: int = Field(10, ge=1, le=50)
+    map_id: str = DEFAULT_MAP_ID
     language: str = "zh"
     start_t: str = "2026-05-11T08:20:00+08:00"
     num_steps: int = Field(4, ge=1, le=100)
@@ -271,29 +281,56 @@ def _experiment_path(workspace: Path, hypothesis_id: str, experiment_id: str) ->
     return workspace / f"hypothesis_{hypothesis_id}" / f"experiment_{experiment_id}"
 
 
-def _load_map_manifest() -> dict[str, Any]:
-    path = _god_root() / "agentsociety" / "custom" / "maps" / "the_ville" / "town.yaml"
-    if not path.exists():
-        path = Path.cwd() / "custom" / "maps" / "the_ville" / "town.yaml"
-    return yaml.safe_load(path.read_text(encoding="utf-8"))
+def _map_service_root() -> Path | None:
+    candidate = _god_root() / "agentsociety"
+    return candidate if (candidate / "custom" / "maps").exists() else None
 
 
-def _known_location_ids() -> list[str]:
-    manifest = _load_map_manifest()
+def _load_map_package(map_id: str | None = None) -> MapPackage:
+    selected = str(map_id or _merged_env().get("GOD_MAP_ID") or DEFAULT_MAP_ID)
+    try:
+        return load_map_package(selected, _map_service_root())
+    except Exception:
+        if selected != DEFAULT_MAP_ID:
+            return load_map_package(DEFAULT_MAP_ID, _map_service_root())
+        raise
+
+
+def _available_map_packages() -> list[MapPackage]:
+    packages = list_map_packages(_map_service_root())
+    if packages:
+        return packages
+    return [load_map_package(DEFAULT_MAP_ID)]
+
+
+def _load_map_manifest(map_id: str | None = None) -> dict[str, Any]:
+    return _load_map_package(map_id).manifest
+
+
+def _known_location_ids(map_id: str | None = None) -> list[str]:
+    manifest = _load_map_manifest(map_id)
     locations = manifest.get("locations") or []
     return [str(item.get("id")) for item in locations if isinstance(item, dict) and item.get("id")]
 
 
-def _map_locations_for_status() -> list[dict[str, Any]]:
+def _known_location_ids_for_package(package: MapPackage) -> list[str]:
     try:
-        locations = _load_map_manifest().get("locations", [])
+        return _known_location_ids(package.map_id)
+    except TypeError:
+        # Some older tests monkeypatch _known_location_ids with a zero-arg lambda.
+        return _known_location_ids()  # type: ignore[call-arg]
+
+
+def _map_locations_for_status(map_id: str | None = None) -> list[dict[str, Any]]:
+    try:
+        locations = _load_map_manifest(map_id).get("locations", [])
     except Exception:
         return []
     return [item for item in locations if isinstance(item, dict)]
 
 
-def _map_location_prompt() -> str:
-    manifest = _load_map_manifest()
+def _map_location_prompt(package: MapPackage) -> str:
+    manifest = package.manifest
     lines: list[str] = []
     for item in manifest.get("locations") or []:
         if not isinstance(item, dict):
@@ -306,10 +343,12 @@ def _map_location_prompt() -> str:
     return "\n".join(lines)
 
 
-def _fallback_location(index: int, known_locations: list[str]) -> str:
+def _fallback_location(index: int, known_locations: list[str], package: MapPackage | None = None) -> str:
     if not known_locations:
         return "park"
-    preferred = ["home", "school", "library", "cafe", "park", "supply_store", "market", "pharmacy", "town_square"]
+    preferred = package.default_location_order if package else []
+    if not preferred:
+        preferred = ["home", "school", "library", "cafe", "park", "supply_store", "market", "pharmacy", "town_square"]
     ordered = [loc for loc in preferred if loc in known_locations] or known_locations
     return ordered[index % len(ordered)]
 
@@ -512,18 +551,21 @@ def _is_generic_agent_name(value: str, agent_id: int) -> bool:
     } or bool(re.fullmatch(r"(jiuwen\s+)?agent[_\s-]*\d+", lowered))
 
 
-def _default_context(title: str, background: str) -> dict[str, Any]:
+def _default_context(title: str, background: str, package: MapPackage) -> dict[str, Any]:
+    map_name = package.display_name
     return {
         "title": title,
         "background": background,
         "simulation_goal": "Run a grounded pixel-town social simulation based on the operator-provided scenario.",
-        "world_setting": "The experiment uses the existing The Ville pixel-town map and maps scenario roles onto available town locations.",
+        "world_setting": f"The experiment uses the {map_name} map package and maps scenario roles onto available town locations.",
         "ethical_boundaries": [
             "Keep the simulation fictional, bounded, and non-abusive.",
             "Do not instruct agents to perform humiliation, coercion, physical harm, or real-world illegal activity.",
             "For high-pressure scenarios, model decision-making, role pressure, and communication without graphic or harmful content.",
         ],
-        "map_adaptation": "No new map is generated in v1; all locations are adapted to The Ville.",
+        "map_adaptation": f"Uses the selected map package {package.map_id} ({map_name}); scenario-specific places are adapted to its known locations.",
+        "map_id": package.map_id,
+        "map_display_name": map_name,
     }
 
 
@@ -531,6 +573,7 @@ def _default_agent(
     agent_id: int,
     basics: DraftBasics,
     known_locations: list[str],
+    package: MapPackage,
 ) -> dict[str, Any]:
     title = basics.title
     background = basics.background
@@ -543,7 +586,7 @@ def _default_agent(
     skill_ids = _default_skill_ids(agent_id)
     location = str(template.get("location") or "")
     if location not in known_locations:
-        location = _fallback_location(agent_id - 1, known_locations)
+        location = _fallback_location(agent_id - 1, known_locations, package)
     profile = {
         "name": name,
         "age": 22 + ((agent_id * 7) % 43),
@@ -574,7 +617,7 @@ def _default_agent(
             "skill_ids": skill_ids,
             "request_timeout": 900,
             "channel_id": "agentsociety",
-            "experiment_context": _default_context(title, background),
+            "experiment_context": _default_context(title, background, package),
         },
         "_initial_location": location,
     }
@@ -604,20 +647,28 @@ def _normalize_skill_ids_from_profile(raw: Any, fallback: Any) -> list[str]:
 
 
 def _normalize_draft(raw: dict[str, Any], basics: DraftBasics) -> dict[str, Any]:
-    known_locations = _known_location_ids()
+    package = _load_map_package(basics.map_id)
+    known_locations = _known_location_ids_for_package(package)
     warnings: list[str] = list(raw.get("warnings") or [])
+    if not package.validation.ok:
+        warnings.extend(f"Map package {package.map_id}: {message}" for message in package.validation.errors)
+    warnings.extend(f"Map package {package.map_id}: {message}" for message in package.validation.warnings)
 
     context = raw.get("experiment_context")
     if not isinstance(context, dict):
         context = {}
     context = {
-        **_default_context(basics.title, basics.background),
+        **_default_context(basics.title, basics.background, package),
         **context,
     }
+    context["map_id"] = package.map_id
+    context["map_display_name"] = package.display_name
     if not context.get("title"):
         context["title"] = basics.title
     if not context.get("background"):
         context["background"] = basics.background
+    if not context.get("map_adaptation") or "The Ville" in str(context.get("map_adaptation")) and package.map_id != DEFAULT_MAP_ID:
+        context["map_adaptation"] = _default_context(basics.title, basics.background, package)["map_adaptation"]
 
     init_config = raw.get("init_config")
     if not isinstance(init_config, dict):
@@ -629,7 +680,7 @@ def _normalize_draft(raw: dict[str, Any], basics: DraftBasics) -> dict[str, Any]
     normalized_agents: list[dict[str, Any]] = []
     for index in range(basics.agent_count):
         source = agents[index] if index < len(agents) and isinstance(agents[index], dict) else {}
-        default_agent = _default_agent(index + 1, basics, known_locations)
+        default_agent = _default_agent(index + 1, basics, known_locations, package)
         merged = deepcopy(default_agent)
         merged.update({k: v for k, v in source.items() if k in {"agent_id", "agent_type", "kwargs"}})
         merged["agent_id"] = index + 1
@@ -682,13 +733,13 @@ def _normalize_draft(raw: dict[str, Any], basics: DraftBasics) -> dict[str, Any]
         raw_location = str(
             raw_initial_locations.get(str(agent["agent_id"]))
             or agent.pop("_initial_location", "")
-            or _fallback_location(index, known_locations)
+            or _fallback_location(index, known_locations, package)
         )
         if raw_location not in known_locations:
             warnings.append(
-                f"Agent {agent['agent_id']} initial location '{raw_location}' is not in The Ville; mapped to a valid location."
+                f"Agent {agent['agent_id']} initial location '{raw_location}' is not in map {package.map_id}; mapped to a valid location."
             )
-            raw_location = _fallback_location(index, known_locations)
+            raw_location = _fallback_location(index, known_locations, package)
         initial_locations[str(agent["agent_id"])] = raw_location
 
     source_env_kwargs: dict[str, Any] = {}
@@ -703,7 +754,8 @@ def _normalize_draft(raw: dict[str, Any], basics: DraftBasics) -> dict[str, Any]
             ],
             "initial_locations": initial_locations,
             "default_group_name": str(source_env_kwargs.get("default_group_name") or f"{basics.title} Chat"),
-            "map_manifest_path": "custom/maps/the_ville/town.yaml",
+            "map_id": package.map_id,
+            "map_manifest_path": relative_manifest_path(package, _map_service_root()),
             "movement_tiles_per_second": float(
                 source_env_kwargs.get("movement_tiles_per_second", basics.movement_tiles_per_second)
             ),
@@ -725,9 +777,6 @@ def _normalize_draft(raw: dict[str, Any], basics: DraftBasics) -> dict[str, Any]
         steps["steps"] = [{"type": "run", "num_steps": basics.num_steps, "tick": basics.tick}]
     steps["start_t"] = str(steps.get("start_t") or basics.start_t)
     validated_steps = StepsConfig.model_validate(steps).model_dump(mode="json")
-
-    if "The Ville" not in str(context.get("map_adaptation", "")):
-        warnings.append("v1 uses the existing The Ville map; scenario-specific places are adapted to known map locations.")
 
     return {
         "experiment_context": context,
@@ -755,7 +804,7 @@ def _readme_for_draft(context: dict[str, Any], init_config: dict[str, Any], step
             f"- Steps: {len(steps.get('steps', []))}",
             "",
             "## Map Adaptation",
-            str(context.get("map_adaptation", "Uses The Ville pixel-town map.")),
+            str(context.get("map_adaptation", "Uses the selected pixel-town map package.")),
         ]
     )
 
@@ -776,9 +825,11 @@ async def _call_openai_compatible(
     api_base: str,
     model: str,
     basics: DraftBasics,
+    package: MapPackage,
 ) -> dict[str, Any]:
     base = api_base.rstrip("/")
     url = base if base.endswith("/chat/completions") else f"{base}/chat/completions"
+    known_locations = _known_location_ids_for_package(package)
     schema = {
         "experiment_context": {
             "title": "string",
@@ -787,14 +838,17 @@ async def _call_openai_compatible(
             "world_setting": "string",
             "ethical_boundaries": ["string"],
             "map_adaptation": "string",
+            "map_id": package.map_id,
+            "map_display_name": package.display_name,
         },
         "init_config": {
             "env_modules": [
                 {
                     "module_type": "PixelTownSocialEnv",
                     "kwargs": {
-                        "initial_locations": {"1": "park"},
+                        "initial_locations": {"1": _fallback_location(0, known_locations, package)},
                         "default_group_name": "string",
+                        "map_id": package.map_id,
                     },
                 }
             ],
@@ -835,7 +889,7 @@ async def _call_openai_compatible(
         "Return only one strict JSON object. Do not use markdown. "
         "Use safe, bounded social-science simulation framing. For prison/authority scenarios, "
         "model role pressure and communication without abuse, humiliation, physical harm, or illegal acts. "
-        "v1 cannot generate a new map; choose only valid The Ville location ids. "
+        "v1 cannot generate a new map; choose only valid location ids from the selected map package. "
         "You must derive the cast from the operator scenario, not from a fixed template."
     )
     user_prompt = (
@@ -846,7 +900,8 @@ async def _call_openai_compatible(
         f"Start time: {basics.start_t}\n"
         f"Run plan: {basics.num_steps} steps, tick {basics.tick} seconds\n"
         f"Operator scenario/background:\n{basics.background}\n\n"
-        f"Available The Ville locations and interactions:\n{_map_location_prompt()}\n\n"
+        f"Selected map package: {package.display_name} ({package.map_id})\n"
+        f"Available locations and interactions:\n{_map_location_prompt(package)}\n\n"
         "Agent profile requirements:\n"
         f"- Return exactly {basics.agent_count} agents.\n"
         "- Every agent must have a realistic English human name; do not use Agent 1, Jiuwen Agent 1, Participant 1, or numbered placeholders. Can use Jiuwen as a prefix, e.g. Jiuwen Alice, Jiuwen Bob, etc.\n"
@@ -856,6 +911,7 @@ async def _call_openai_compatible(
         f"- common_skill_ids must be exactly: {json.dumps(COMMON_SKILL_IDS, ensure_ascii=False)}.\n"
         f"- skill_ids must contain 3-5 ids chosen only from this executable catalog: {json.dumps(PERSONA_SKILL_IDS, ensure_ascii=False)}.\n"
         "- Initial locations must use valid location ids from the list above and should match each role's routine.\n"
+        f"- Keep env_modules[0].kwargs.map_id as {package.map_id}; do not invent another map id.\n"
         "- Keep behavior safe and bounded; transform risky settings into observation, consent, rules, welfare, and communication dynamics.\n\n"
         f"Required JSON shape:\n{json.dumps(schema, ensure_ascii=False)}"
     )
@@ -975,11 +1031,17 @@ async def setup_status() -> dict[str, Any]:
         / "init"
         / "init_config.json"
     )
+    selected_map_id = str(env.get("GOD_MAP_ID") or DEFAULT_MAP_ID)
+    maps = [map_package_summary(package, _map_service_root()) for package in _available_map_packages()]
+    if selected_map_id not in {item["map_id"] for item in maps}:
+        selected_map_id = DEFAULT_MAP_ID
     return {
         "god_root": str(_god_root()),
         "env_file": str(_env_file()),
         "workspace_path": str(workspace),
-        "map_locations": _map_locations_for_status(),
+        "selected_map_id": selected_map_id,
+        "maps": maps,
+        "map_locations": _map_locations_for_status(selected_map_id),
         "model_config": {key: _redact_value(key, env.get(key)) for key in MODEL_KEYS},
         "current_experiment": current,
         "setup_mode": os.environ.get("GOD_SETUP_MODE") == "1",
@@ -1017,12 +1079,14 @@ async def generate_draft(request: GenerateDraftRequest) -> dict[str, Any]:
     model = model_config.GOD_LLM_MODEL or env.get("GOD_LLM_MODEL") or ENV_DEFAULTS["GOD_LLM_MODEL"]
     if not api_key.strip():
         raise HTTPException(status_code=400, detail="GOD_LLM_API_KEY is required to generate an experiment draft")
+    package = _load_map_package(request.basics.map_id)
     try:
         raw = await _call_openai_compatible(
             api_key=api_key.strip(),
             api_base=api_base.strip(),
             model=model.strip(),
             basics=request.basics,
+            package=package,
         )
     except HTTPException:
         raise
@@ -1037,10 +1101,16 @@ async def generate_draft(request: GenerateDraftRequest) -> dict[str, Any]:
 
 @router.post("/publish")
 async def publish_experiment(request: PublishRequest) -> dict[str, Any]:
+    draft_context = request.draft.get("experiment_context", {}) if isinstance(request.draft.get("experiment_context"), dict) else {}
+    draft_env_modules = request.draft.get("init_config", {}).get("env_modules", []) if isinstance(request.draft.get("init_config"), dict) else []
+    draft_env_kwargs: dict[str, Any] = {}
+    if draft_env_modules and isinstance(draft_env_modules[0], dict):
+        draft_env_kwargs = draft_env_modules[0].get("kwargs") or {}
     basics = DraftBasics(
-        title=str(request.draft.get("experiment_context", {}).get("title") or "Custom GOD Experiment"),
-        background=str(request.draft.get("experiment_context", {}).get("background") or "Custom GOD experiment"),
+        title=str(draft_context.get("title") or "Custom GOD Experiment"),
+        background=str(draft_context.get("background") or "Custom GOD experiment"),
         agent_count=max(1, len(request.draft.get("init_config", {}).get("agents", []) or [1])),
+        map_id=str(draft_env_kwargs.get("map_id") or draft_context.get("map_id") or _merged_env().get("GOD_MAP_ID") or DEFAULT_MAP_ID),
     )
     draft = _normalize_draft(request.draft, basics)
     workspace = _workspace_path()
@@ -1097,6 +1167,7 @@ async def publish_experiment(request: PublishRequest) -> dict[str, Any]:
     env_values = {
         "GOD_EXPERIMENT": hypothesis_id,
         "GOD_EXPERIMENT_RUN": experiment_id,
+        "GOD_MAP_ID": draft["experiment_context"].get("map_id", DEFAULT_MAP_ID),
     }
     if request.llm_config:
         env_values.update(
@@ -1146,6 +1217,7 @@ async def start_default_experiment() -> dict[str, Any]:
             status_code=404,
             detail=f"Default experiment config not found: {config_path}",
         )
+    _write_env_values({"GOD_MAP_ID": DEFAULT_MAP_ID})
     current = _write_current_experiment(hypothesis_id, experiment_id, workspace)
     start_request = _write_start_request(hypothesis_id, experiment_id, workspace)
     return {

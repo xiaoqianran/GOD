@@ -58,9 +58,10 @@
           "10": "market"
         },
         "default_group_name": "The Ville Daily Life Chat",
-        "map_manifest_path": "custom/maps/the_ville/town.yaml",
+        "map_manifest_path": "custom/maps/the_ville/map.yaml",
         "movement_tiles_per_second": 8.0,
-        "movement_min_steps_per_trip": 3
+        "movement_min_steps_per_trip": 3,
+        "map_id": "the_ville"
       }
     }
   ],

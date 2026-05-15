@@ -43,6 +43,9 @@ const DEFAULT_EXPERIMENT_ID = import.meta.env.VITE_DEFAULT_REPLAY_EXPERIMENT_ID 
 const DEFAULT_WORKSPACE_PATH = import.meta.env.VITE_REPLAY_WORKSPACE_PATH ?? '';
 const INITIAL_REPLAY_READY_TIMEOUT_MS = 60_000;
 const INITIAL_REPLAY_RETRY_INTERVAL_MS = 1500;
+const PHASER_TEXT_FONT_FAMILY = 'Arial, "PingFang SC", "Microsoft YaHei", sans-serif';
+const AGENT_NAME_LABEL_HEIGHT = 17;
+const SPEECH_BUBBLE_LABEL_GAP = 6;
 const HIDDEN_TILE_LAYER_NAMES = new Set([
     'AgentSociety Scene Footprints',
     'Collisions',
@@ -126,6 +129,13 @@ type ReplayMapTileset = {
     image_url: string;
 };
 
+type ReplayMapCharacter = {
+    name: string;
+    image_url: string;
+    frame_width?: number;
+    frame_height?: number;
+};
+
 type ReplayMapLocation = {
     id: string;
     name: string;
@@ -153,6 +163,8 @@ type ReplayMapInfo = {
     height: number;
     tiled_map_url: string;
     tilesets: ReplayMapTileset[];
+    character_root_url?: string | null;
+    character_sprites?: ReplayMapCharacter[];
     locations: ReplayMapLocation[];
     interactions: ReplayMapInteraction[];
 };
@@ -238,6 +250,7 @@ type WalkableMap = {
     tileSize: number;
     tiledMapUrl: string;
     tilesets: ReplayMapTileset[];
+    characterSprites: ReplayMapCharacter[];
     locations: ReplayMapLocation[];
     interactions: ReplayMapInteraction[];
     width: number;
@@ -297,11 +310,22 @@ type AgentHoverState = {
 type AgentScreenPosition = {
     x: number;
     y: number;
+    spriteSize: number;
+    labelX: number;
+    labelY: number;
+    speechX: number;
+    speechY: number;
 };
 
 type CanvasSize = {
     width: number;
     height: number;
+};
+
+type PhaserSpeechBubble = {
+    bubble: Phaser.GameObjects.Graphics;
+    text: Phaser.GameObjects.Text;
+    hitZone: Phaser.GameObjects.Zone;
 };
 
 type PhaserBridge = {
@@ -311,6 +335,8 @@ type PhaserBridge = {
     sprites: Map<number, Phaser.GameObjects.Sprite>;
     labels: Map<number, Phaser.GameObjects.Text>;
     hitZones: Map<number, Phaser.GameObjects.Zone>;
+    speechBubbles: Map<number, PhaserSpeechBubble>;
+    hoveredSpeechAgentId?: number;
     locationMarkers?: Phaser.GameObjects.GameObject[];
     selectedId?: number;
 };
@@ -724,6 +750,13 @@ function getAutoTile(agentId: number, step: number, walkableMap: WalkableMap): T
     return tile;
 }
 
+function spriteForAgent(index: number, walkableMap: WalkableMap): string {
+    if (walkableMap.characterSprites.length > 0) {
+        return walkableMap.characterSprites[index % walkableMap.characterSprites.length].name;
+    }
+    return CHARACTER_NAMES[index % CHARACTER_NAMES.length];
+}
+
 function buildPixelFrame(
     profiles: AgentProfile[],
     bundle: ReplayStepBundle | undefined,
@@ -758,7 +791,7 @@ function buildPixelFrame(
             return {
                 id: profile.id,
                 name: getAgentName(profile),
-                spriteKey: CHARACTER_NAMES[index % CHARACTER_NAMES.length],
+                spriteKey: spriteForAgent(index, walkableMap),
                 tile: hasReplayTile ? { x: tileX, y: tileY } : fallbackTile,
                 action: rawDescription ?? 'idle',
                 status,
@@ -861,6 +894,7 @@ async function loadWalkableMap(mapInfo: ReplayMapInfo): Promise<WalkableMap> {
         tileSize: mapInfo.tile_size || TILE_SIZE,
         tiledMapUrl: mapInfo.tiled_map_url,
         tilesets: mapInfo.tilesets,
+        characterSprites: mapInfo.character_sprites || [],
         locations: mapInfo.locations,
         interactions: mapInfo.interactions,
         width,
@@ -920,27 +954,79 @@ function getFitScreenPosition(agent: PixelAgent, map: WalkableMap, canvasSize: C
         0.16,
         0.92,
     );
-    const scrollX = mapWidth / 2 - canvasSize.width / (2 * zoom);
-    const scrollY = mapHeight / 2 - canvasSize.height / (2 * zoom);
+    const originX = canvasSize.width / 2;
+    const originY = canvasSize.height / 2;
+    const scrollX = mapWidth / 2 - originX;
+    const scrollY = mapHeight / 2 - originY;
     const worldX = agent.tile.x * tileSize + tileSize / 2;
     const worldY = agent.tile.y * tileSize + tileSize / 2;
+    const speechOffsetY = getCompactSpeechBubbleMetrics(tileSize, zoom).offsetY * zoom;
+    const screenX = originX + (worldX - scrollX - originX) * zoom;
+    const screenY = originY + (worldY - scrollY - originY) * zoom;
     return {
-        x: (worldX - scrollX) * zoom,
-        y: (worldY - scrollY) * zoom,
+        x: screenX,
+        y: screenY,
+        spriteSize: tileSize * zoom,
+        labelX: screenX,
+        labelY: screenY - tileSize * 0.75 * zoom,
+        speechX: screenX,
+        speechY: screenY - speechOffsetY,
     };
 }
 
-function formatSentMessageTarget(item: AgentMessage | Communication): string {
-    if (item.type === 'direct') {
-        return `发给 ${item.receiver_name ?? `Agent ${item.receiver_id ?? ''}`.trim()}`;
+function areAgentScreenPositionsEqual(
+    current: Record<number, AgentScreenPosition>,
+    next: Record<number, AgentScreenPosition>,
+) {
+    const currentKeys = Object.keys(current);
+    const nextKeys = Object.keys(next);
+    if (currentKeys.length !== nextKeys.length) {
+        return false;
     }
-    if (item.type === 'group') {
-        return `发到 ${item.group_name ?? '群组'}${item.recipient_count ? `（${item.recipient_count} 人）` : ''}`;
-    }
-    if (item.type === 'system_event') {
-        return '发布系统事件';
-    }
-    return item.type ?? '发出消息';
+    return nextKeys.every((key) => {
+        const agentId = Number(key);
+        const previous = current[agentId];
+        const position = next[agentId];
+        if (!previous || !position) {
+            return false;
+        }
+        return Math.abs(previous.x - position.x) < 0.5
+            && Math.abs(previous.y - position.y) < 0.5
+            && Math.abs(previous.spriteSize - position.spriteSize) < 0.5
+            && Math.abs(previous.labelX - position.labelX) < 0.5
+            && Math.abs(previous.labelY - position.labelY) < 0.5
+            && Math.abs(previous.speechX - position.speechX) < 0.5
+            && Math.abs(previous.speechY - position.speechY) < 0.5;
+    });
+}
+
+function projectWorldToContainer(
+    scene: Phaser.Scene,
+    container: HTMLDivElement,
+    worldX: number,
+    worldY: number,
+) {
+    const camera = scene.cameras.main;
+    const canvasRect = scene.game.canvas.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    const scaleX = canvasRect.width / Math.max(camera.width, 1);
+    const scaleY = canvasRect.height / Math.max(camera.height, 1);
+    const originX = camera.width * camera.originX;
+    const originY = camera.height * camera.originY;
+    const screenX = camera.x + originX + (worldX - camera.scrollX - originX) * camera.zoomX;
+    const screenY = camera.y + originY + (worldY - camera.scrollY - originY) * camera.zoomY;
+    return {
+        x: canvasRect.left - containerRect.left + screenX * scaleX,
+        y: canvasRect.top - containerRect.top + screenY * scaleY,
+        scaleX,
+        scaleY,
+    };
+}
+
+function getAgentSpeechItems(agent: PixelAgent): Array<AgentMessage | Communication> {
+    return agent.stepCommunications.length > 0
+        ? agent.stepCommunications
+        : agent.sentMessages;
 }
 
 function PixelAgentHoverCard({
@@ -950,11 +1036,6 @@ function PixelAgentHoverCard({
     agent: PixelAgent;
     frame: PixelFrame;
 }) {
-    const outgoingItems = agent.stepCommunications.length > 0
-        ? agent.stepCommunications
-        : agent.sentMessages;
-    const hasOutgoingItems = outgoingItems.length > 0;
-
     return (
         <div className="pixel-agent-hover-card">
             <div className="pixel-agent-hover-header">
@@ -1011,22 +1092,33 @@ function PixelAgentHoverCard({
                         ))}
                     </div>
                 )}
-                <Text type="secondary">
-                    {agent.stepCommunications.length > 0 ? '本步发言' : '最近发言'}
-                </Text>
-                {!hasOutgoingItems ? (
-                    <Text className="pixel-agent-hover-muted">暂无该居民发出的消息</Text>
-                ) : (
-                    <div className="pixel-agent-hover-message-list">
-                        {outgoingItems.slice(0, 3).map((item, index) => (
-                            <div className="pixel-agent-hover-message" key={`${item.content}-${index}`}>
-                                <Text type="secondary">{formatSentMessageTarget(item)}</Text>
-                                <Text className="pixel-agent-hover-text">{item.content ?? ''}</Text>
-                            </div>
-                        ))}
-                    </div>
-                )}
             </div>
+        </div>
+    );
+}
+
+function PixelAgentSpeechBubble({
+    text,
+    position,
+}: {
+    text: string;
+    position: AgentScreenPosition;
+}) {
+    const bubbleBottom = position.labelY - AGENT_NAME_LABEL_HEIGHT - SPEECH_BUBBLE_LABEL_GAP;
+
+    return (
+        <div
+            className="pixel-agent-speech-bubble expanded"
+            style={{
+                left: Math.round(position.speechX),
+                top: Math.round(bubbleBottom),
+            }}
+        >
+            {text.split('\n').slice(0, 3).map((line, index) => (
+                <div className="pixel-agent-speech-line" key={`${index}-${line}`}>
+                    {line}
+                </div>
+            ))}
         </div>
     );
 }
@@ -1036,11 +1128,15 @@ function PixelTownCanvas({
     map,
     selectedAgentId,
     onSelectAgent,
+    onOpenSetup,
+    onOpenSkills,
 }: {
     frame?: PixelFrame;
     map: WalkableMap;
     selectedAgentId?: number;
     onSelectAgent: (agentId: number) => void;
+    onOpenSetup: () => void;
+    onOpenSkills: () => void;
 }) {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const gameRef = useRef<Phaser.Game | null>(null);
@@ -1048,14 +1144,23 @@ function PixelTownCanvas({
         sprites: new Map(),
         labels: new Map(),
         hitZones: new Map(),
+        speechBubbles: new Map(),
         locationMarkers: [],
     });
     const frameRef = useRef<PixelFrame | undefined>(frame);
     const onSelectAgentRef = useRef(onSelectAgent);
+    const agentScreenPositionsRef = useRef<Record<number, AgentScreenPosition>>({});
     const [hoverState, setHoverState] = useState<AgentHoverState | undefined>();
+    const [speechHoverAgentId, setSpeechHoverAgentId] = useState<number | undefined>();
     const [agentScreenPositions, setAgentScreenPositions] = useState<Record<number, AgentScreenPosition>>({});
     const [canvasSize, setCanvasSize] = useState<CanvasSize>({ width: 0, height: 0 });
     const hoveredAgent = frame?.agents.find((agent) => agent.id === hoverState?.agentId);
+    const hoveredAgentSpeechItems = hoveredAgent ? getAgentSpeechItems(hoveredAgent) : [];
+    const speechHoverAgent = frame?.agents.find((agent) => agent.id === speechHoverAgentId);
+    const speechHoverText = speechHoverAgent ? getSpeechText(speechHoverAgent) : '';
+    const speechHoverPosition = speechHoverAgent
+        ? agentScreenPositions[speechHoverAgent.id] ?? getFitScreenPosition(speechHoverAgent, map, canvasSize)
+        : undefined;
 
     const clampHoverPosition = useCallback((rawX: number, rawY: number): [number, number] => {
         const width = containerRef.current?.clientWidth ?? 0;
@@ -1071,25 +1176,83 @@ function PixelTownCanvas({
         ];
     }, []);
 
+    const readAgentScreenPosition = useCallback((agentId: number): AgentScreenPosition | undefined => {
+        const scene = bridgeRef.current.scene;
+        const currentFrame = frameRef.current;
+        const container = containerRef.current;
+        if (!scene || !currentFrame || !container) {
+            return undefined;
+        }
+        const agent = currentFrame.agents.find((item) => item.id === agentId);
+        if (!agent) {
+            return undefined;
+        }
+        const camera = scene.cameras.main;
+        const tileSize = currentFrame.map.tileSize || TILE_SIZE;
+        const sprite = bridgeRef.current.sprites.get(agentId);
+        const worldX = sprite?.x ?? (agent.tile.x * tileSize + tileSize / 2);
+        const worldY = sprite?.y ?? (agent.tile.y * tileSize + tileSize / 2);
+        const label = bridgeRef.current.labels.get(agentId);
+        const speechBubble = bridgeRef.current.speechBubbles.get(agentId);
+        const { offsetY } = getCompactSpeechBubbleMetrics(tileSize, camera.zoom);
+        const screenPosition = projectWorldToContainer(scene, container, worldX, worldY);
+        const labelPosition = projectWorldToContainer(
+            scene,
+            container,
+            label?.x ?? worldX,
+            label?.y ?? worldY - tileSize * 0.75,
+        );
+        const speechPosition = projectWorldToContainer(
+            scene,
+            container,
+            speechBubble?.bubble.x ?? worldX,
+            speechBubble?.bubble.y ?? worldY - offsetY,
+        );
+        return {
+            x: screenPosition.x,
+            y: screenPosition.y,
+            spriteSize: (sprite?.displayHeight ?? tileSize) * camera.zoom * screenPosition.scaleY,
+            labelX: labelPosition.x,
+            labelY: labelPosition.y,
+            speechX: speechPosition.x,
+            speechY: speechPosition.y,
+        };
+    }, []);
+
     const syncAgentScreenPositions = useCallback(() => {
         const scene = bridgeRef.current.scene;
         const currentFrame = frameRef.current;
         if (!scene || !currentFrame) {
-            setAgentScreenPositions({});
+            if (Object.keys(agentScreenPositionsRef.current).length > 0) {
+                agentScreenPositionsRef.current = {};
+                setAgentScreenPositions({});
+            }
             return;
         }
-        const camera = scene.cameras.main;
-        const tileSize = currentFrame.map.tileSize || TILE_SIZE;
+        syncCompactSpeechBubbles(bridgeRef.current, currentFrame);
         const next: Record<number, AgentScreenPosition> = {};
         currentFrame.agents.forEach((agent) => {
-            const worldX = agent.tile.x * tileSize + tileSize / 2;
-            const worldY = agent.tile.y * tileSize + tileSize / 2;
-            next[agent.id] = {
-                x: (worldX - camera.scrollX) * camera.zoom + camera.x,
-                y: (worldY - camera.scrollY) * camera.zoom + camera.y,
-            };
+            const position = readAgentScreenPosition(agent.id);
+            if (position) {
+                next[agent.id] = position;
+            }
         });
-        setAgentScreenPositions(next);
+        if (!areAgentScreenPositionsEqual(agentScreenPositionsRef.current, next)) {
+            agentScreenPositionsRef.current = next;
+            setAgentScreenPositions(next);
+        }
+    }, [readAgentScreenPosition]);
+
+    const showSpeechBubbleForAgent = useCallback((agentId: number | undefined) => {
+        const bridge = bridgeRef.current;
+        if (bridge.hoveredSpeechAgentId !== undefined && bridge.hoveredSpeechAgentId !== agentId) {
+            setCompactSpeechBubbleVisible(bridge.speechBubbles.get(bridge.hoveredSpeechAgentId), true);
+        }
+        bridge.hoveredSpeechAgentId = agentId;
+        if (agentId === undefined) {
+            return;
+        }
+        setCompactSpeechBubbleVisible(bridge.speechBubbles.get(agentId), false);
     }, []);
 
     useEffect(() => {
@@ -1120,23 +1283,45 @@ function PixelTownCanvas({
     const handleHoverAgent = useCallback((agentId: number | undefined, pointer?: Phaser.Input.Pointer) => {
         if (agentId === undefined || !pointer) {
             setHoverState(undefined);
+            setSpeechHoverAgentId(undefined);
+            showSpeechBubbleForAgent(undefined);
             return;
         }
+        const immediatePosition = readAgentScreenPosition(agentId);
+        if (immediatePosition) {
+            setAgentScreenPositions((current) => ({
+                ...current,
+                [agentId]: immediatePosition,
+            }));
+        }
+        syncAgentScreenPositions();
+        showSpeechBubbleForAgent(agentId);
         const [x, y] = clampHoverPosition(pointer.x, pointer.y);
+        setSpeechHoverAgentId(agentId);
         setHoverState({ agentId, x, y });
-    }, [clampHoverPosition]);
+    }, [clampHoverPosition, readAgentScreenPosition, showSpeechBubbleForAgent, syncAgentScreenPositions]);
 
     const handleDomHoverAgent = useCallback((agentId: number, event: React.MouseEvent<HTMLDivElement>) => {
         const bounds = containerRef.current?.getBoundingClientRect();
         if (!bounds) {
             return;
         }
+        const immediatePosition = readAgentScreenPosition(agentId);
+        if (immediatePosition) {
+            setAgentScreenPositions((current) => ({
+                ...current,
+                [agentId]: immediatePosition,
+            }));
+        }
+        syncAgentScreenPositions();
+        showSpeechBubbleForAgent(agentId);
         const [x, y] = clampHoverPosition(
             event.clientX - bounds.left,
             event.clientY - bounds.top,
         );
+        setSpeechHoverAgentId(agentId);
         setHoverState({ agentId, x, y });
-    }, [clampHoverPosition]);
+    }, [clampHoverPosition, readAgentScreenPosition, showSpeechBubbleForAgent, syncAgentScreenPositions]);
 
     useEffect(() => {
         if (!containerRef.current || gameRef.current) {
@@ -1154,12 +1339,21 @@ function PixelTownCanvas({
                         this.load.image(`location-${location.id}`, location.visual_asset_url);
                     }
                 });
-                CHARACTER_NAMES.forEach((name) => {
-                    this.load.spritesheet(name, `${CHARACTER_ROOT}/${name}.png`, {
-                        frameWidth: TILE_SIZE,
-                        frameHeight: TILE_SIZE,
+                if (map.characterSprites.length > 0) {
+                    map.characterSprites.forEach((sprite) => {
+                        this.load.spritesheet(sprite.name, sprite.image_url, {
+                            frameWidth: sprite.frame_width || map.tileSize || TILE_SIZE,
+                            frameHeight: sprite.frame_height || map.tileSize || TILE_SIZE,
+                        });
                     });
-                });
+                } else {
+                    CHARACTER_NAMES.forEach((name) => {
+                        this.load.spritesheet(name, `${CHARACTER_ROOT}/${name}.png`, {
+                            frameWidth: TILE_SIZE,
+                            frameHeight: TILE_SIZE,
+                        });
+                    });
+                }
             }
 
             create() {
@@ -1231,6 +1425,7 @@ function PixelTownCanvas({
                 this.input.keyboard?.createCursorKeys();
                 renderFrame(this, frameRef.current, bridgeRef.current, onSelectAgentRef.current, handleHoverAgent);
                 syncAgentScreenPositions();
+                this.events.on(Phaser.Scenes.Events.POST_UPDATE, syncAgentScreenPositions);
             }
         }
 
@@ -1255,10 +1450,12 @@ function PixelTownCanvas({
         return () => {
             gameRef.current?.destroy(true);
             gameRef.current = null;
+            agentScreenPositionsRef.current = {};
             bridgeRef.current = {
                 sprites: new Map(),
                 labels: new Map(),
                 hitZones: new Map(),
+                speechBubbles: new Map(),
                 locationMarkers: [],
             };
         };
@@ -1278,7 +1475,15 @@ function PixelTownCanvas({
     }, [hoverState, hoveredAgent]);
 
     useEffect(() => {
+        if (speechHoverAgentId !== undefined && !frame?.agents.some((agent) => agent.id === speechHoverAgentId)) {
+            setSpeechHoverAgentId(undefined);
+            showSpeechBubbleForAgent(undefined);
+        }
+    }, [frame, showSpeechBubbleForAgent, speechHoverAgentId]);
+
+    useEffect(() => {
         if (!frame) {
+            agentScreenPositionsRef.current = {};
             setAgentScreenPositions({});
             return undefined;
         }
@@ -1305,7 +1510,16 @@ function PixelTownCanvas({
     useEffect(() => {
         bridgeRef.current.selectedId = selectedAgentId;
         updateSelection(bridgeRef.current);
-    }, [selectedAgentId]);
+        let attempts = 0;
+        const timer = window.setInterval(() => {
+            syncAgentScreenPositions();
+            attempts += 1;
+            if (attempts >= 8) {
+                window.clearInterval(timer);
+            }
+        }, 80);
+        return () => window.clearInterval(timer);
+    }, [selectedAgentId, syncAgentScreenPositions]);
 
     return (
         <div className="pixel-town-canvas" ref={containerRef}>
@@ -1347,6 +1561,41 @@ function PixelTownCanvas({
                     />
                 </Tooltip>
             </div>
+            <div className="pixel-canvas-actions">
+                <Tooltip title="创建或配置一个新的实验副本">
+                    <Button icon={<SettingOutlined />} onClick={onOpenSetup}>
+                        新实验
+                    </Button>
+                </Tooltip>
+                <Tooltip title="查看和创建真实可执行 Skills">
+                    <Button icon={<ThunderboltOutlined />} onClick={onOpenSkills}>
+                        Skills
+                    </Button>
+                </Tooltip>
+            </div>
+            {frame?.agents.map((agent) => {
+                const position = agentScreenPositions[agent.id] ?? getFitScreenPosition(agent, map, canvasSize);
+                if (!position) {
+                    return null;
+                }
+                return (
+                    <div
+                        className="pixel-agent-name-label"
+                        key={`label-${agent.id}`}
+                        style={{
+                            left: Math.round(position.labelX),
+                            top: Math.round(position.labelY),
+                        }}
+                    >
+                        {agent.name}
+                    </div>
+                );
+            })}
+            {speechHoverAgent
+                && speechHoverText
+                && speechHoverPosition ? (
+                <PixelAgentSpeechBubble text={speechHoverText} position={speechHoverPosition} />
+            ) : null}
             {frame?.agents.map((agent) => {
                 const position = agentScreenPositions[agent.id] ?? getFitScreenPosition(agent, map, canvasSize);
                 if (!position) {
@@ -1366,11 +1615,15 @@ function PixelTownCanvas({
                         onClick={() => onSelectAgent(agent.id)}
                         onMouseEnter={(event) => handleDomHoverAgent(agent.id, event)}
                         onMouseMove={(event) => handleDomHoverAgent(agent.id, event)}
-                        onMouseLeave={() => setHoverState(undefined)}
+                        onMouseLeave={() => {
+                            setHoverState(undefined);
+                            setSpeechHoverAgentId(undefined);
+                            showSpeechBubbleForAgent(undefined);
+                        }}
                     />
                 );
             })}
-            {hoverState && hoveredAgent && frame && (
+            {hoverState && hoveredAgent && frame && hoveredAgentSpeechItems.length === 0 && (
                 <div
                     className="pixel-agent-hover-layer"
                     style={{ left: hoverState.x, top: hoverState.y }}
@@ -1413,6 +1666,178 @@ function renderLocationMarkers(scene: Phaser.Scene, map: WalkableMap, bridge: Ph
         });
 }
 
+function destroySpeechBubble(bridge: PhaserBridge, agentId: number) {
+    const speechBubble = bridge.speechBubbles.get(agentId);
+    if (!speechBubble) {
+        return;
+    }
+    speechBubble.bubble.destroy();
+    speechBubble.text.destroy();
+    speechBubble.hitZone.destroy();
+    bridge.speechBubbles.delete(agentId);
+}
+
+function setCompactSpeechBubbleVisible(speechBubble: PhaserSpeechBubble | undefined, visible: boolean) {
+    speechBubble?.bubble.setVisible(visible);
+    speechBubble?.text.setVisible(visible);
+}
+
+function drawCompactSpeechBubble(bubble: Phaser.GameObjects.Graphics, tileSize: number) {
+    const width = tileSize * 0.9;
+    const height = tileSize * 0.52;
+    const radius = height / 2;
+    const tailWidth = tileSize * 0.18;
+    const tailHeight = tileSize * 0.16;
+    const tailY = height / 2 - 1;
+
+    bubble.clear();
+    bubble.fillStyle(0xffffff, 0.96);
+    bubble.lineStyle(Math.max(1, tileSize * 0.045), 0x111827, 0.95);
+    bubble.fillRoundedRect(-width / 2, -height / 2, width, height, radius);
+    bubble.strokeRoundedRect(-width / 2, -height / 2, width, height, radius);
+    bubble.fillTriangle(-tailWidth / 2, tailY, 0, tailY + tailHeight, tailWidth / 2, tailY);
+    bubble.strokeTriangle(-tailWidth / 2, tailY, 0, tailY + tailHeight, tailWidth / 2, tailY);
+}
+
+function getCompactSpeechBubbleMetrics(tileSize: number, zoom: number) {
+    const baseWidth = tileSize * 0.9;
+    const baseHeight = tileSize * 0.52;
+    const tailHeight = tileSize * 0.16;
+    const desiredScreenWidth = Phaser.Math.Clamp(tileSize * zoom * 1.25, 14, 26);
+    const scale = desiredScreenWidth / Math.max(1, baseWidth * zoom);
+    const safeZoom = Math.max(zoom, 0.01);
+    const bubbleBottomOffset = ((baseHeight / 2 - 1) + tailHeight) * scale;
+    const labelTopOffset = tileSize * 0.75 + (AGENT_NAME_LABEL_HEIGHT + SPEECH_BUBBLE_LABEL_GAP) / safeZoom;
+    const offsetY = labelTopOffset + bubbleBottomOffset;
+    return { scale, offsetY };
+}
+
+function getTextResolution() {
+    return typeof window === 'undefined'
+        ? 4
+        : Phaser.Math.Clamp((window.devicePixelRatio || 2) * 2, 4, 6);
+}
+
+function snapWorldToScreenPixel(scene: Phaser.Scene, x: number, y: number): { x: number; y: number } {
+    const camera = scene.cameras.main;
+    const zoom = Math.max(camera.zoom, 0.01);
+    const originX = camera.width * camera.originX;
+    const originY = camera.height * camera.originY;
+    const screenX = camera.x + originX + (x - camera.scrollX - originX) * zoom;
+    const screenY = camera.y + originY + (y - camera.scrollY - originY) * zoom;
+    return {
+        x: (Math.round(screenX) - camera.x - originX) / zoom + camera.scrollX + originX,
+        y: (Math.round(screenY) - camera.y - originY) / zoom + camera.scrollY + originY,
+    };
+}
+
+function applyReadableAgentLabelStyle(label: Phaser.GameObjects.Text, zoom: number) {
+    const safeZoom = Math.max(zoom, 0.01);
+    label.setStyle({
+        fontFamily: PHASER_TEXT_FONT_FAMILY,
+        fontSize: `${10.5 / safeZoom}px`,
+        color: '#ffffff',
+        backgroundColor: 'rgba(17, 24, 39, 0.9)',
+        stroke: '#111827',
+        strokeThickness: 0.75 / safeZoom,
+        padding: { x: 4 / safeZoom, y: 2 / safeZoom },
+        resolution: getTextResolution(),
+    });
+}
+
+function applyCompactSpeechBubbleMetrics(
+    speechBubble: PhaserSpeechBubble,
+    tileSize: number,
+    zoom: number,
+) {
+    const { scale } = getCompactSpeechBubbleMetrics(tileSize, zoom);
+    speechBubble.bubble.setScale(scale);
+    speechBubble.text.setScale(scale);
+    speechBubble.hitZone.setScale(scale);
+}
+
+function syncCompactSpeechBubbles(bridge: PhaserBridge, frame: PixelFrame) {
+    const scene = bridge.scene;
+    if (!scene) {
+        return;
+    }
+    const tileSize = frame.map.tileSize || TILE_SIZE;
+    const zoom = scene.cameras.main.zoom;
+    for (const agent of frame.agents) {
+        const label = bridge.labels.get(agent.id);
+        const speechBubble = bridge.speechBubbles.get(agent.id);
+        const sprite = bridge.sprites.get(agent.id);
+        if (!sprite) {
+            continue;
+        }
+        if (label) {
+            applyReadableAgentLabelStyle(label, zoom);
+            const labelPosition = snapWorldToScreenPixel(scene, sprite.x, sprite.y - tileSize * 0.75);
+            label.setPosition(labelPosition.x, labelPosition.y);
+        }
+        if (!speechBubble) {
+            continue;
+        }
+        const { offsetY } = getCompactSpeechBubbleMetrics(tileSize, zoom);
+        applyCompactSpeechBubbleMetrics(speechBubble, tileSize, zoom);
+        const speechPosition = snapWorldToScreenPixel(scene, sprite.x, sprite.y - offsetY);
+        speechBubble.bubble.setPosition(speechPosition.x, speechPosition.y);
+        speechBubble.text.setPosition(speechPosition.x, speechPosition.y - tileSize * 0.02);
+        speechBubble.hitZone.setPosition(speechPosition.x, speechPosition.y);
+    }
+    if (bridge.hoveredSpeechAgentId !== undefined) {
+        setCompactSpeechBubbleVisible(bridge.speechBubbles.get(bridge.hoveredSpeechAgentId), false);
+    }
+}
+
+function getSpeechText(agent: PixelAgent): string {
+    return getAgentSpeechItems(agent)
+        .slice(0, 3)
+        .map((item) => item.content?.trim())
+        .filter((content): content is string => Boolean(content))
+        .join('\n');
+}
+
+function ensureCompactSpeechBubble(
+    scene: Phaser.Scene,
+    bridge: PhaserBridge,
+    agent: PixelAgent,
+    x: number,
+    y: number,
+    tileSize: number,
+    onSelectAgent: (agentId: number) => void,
+    onHoverAgent: (agentId: number | undefined, pointer?: Phaser.Input.Pointer) => void,
+): PhaserSpeechBubble {
+    let speechBubble = bridge.speechBubbles.get(agent.id);
+    if (speechBubble) {
+        return speechBubble;
+    }
+    const bubble = scene.add.graphics({ x, y });
+    bubble.setDepth(34);
+    drawCompactSpeechBubble(bubble, tileSize);
+
+    const text = scene.add.text(x, y - tileSize * 0.02, '...', {
+        fontFamily: PHASER_TEXT_FONT_FAMILY,
+        fontSize: `${Math.max(7, tileSize * 0.24)}px`,
+        color: '#111827',
+        resolution: getTextResolution(),
+    });
+    text.setOrigin(0.5, 0.5);
+    text.setDepth(35);
+
+    const hitZone = scene.add.zone(x, y, tileSize * 1.1, tileSize * 0.9);
+    hitZone.setDepth(46);
+    hitZone.setInteractive({ useHandCursor: true });
+    hitZone.on('pointerdown', () => onSelectAgent(agent.id));
+    hitZone.on('pointerover', (pointer: Phaser.Input.Pointer) => onHoverAgent(agent.id, pointer));
+    hitZone.on('pointermove', (pointer: Phaser.Input.Pointer) => onHoverAgent(agent.id, pointer));
+    hitZone.on('pointerout', () => onHoverAgent(undefined));
+
+    speechBubble = { bubble, text, hitZone };
+    bridge.speechBubbles.set(agent.id, speechBubble);
+    return speechBubble;
+}
+
 function renderFrame(
     scene: Phaser.Scene,
     frame: PixelFrame | undefined,
@@ -1433,6 +1858,7 @@ function renderFrame(
             bridge.labels.delete(agentId);
             bridge.hitZones.get(agentId)?.destroy();
             bridge.hitZones.delete(agentId);
+            destroySpeechBubble(bridge, agentId);
         }
     }
 
@@ -1443,6 +1869,10 @@ function renderFrame(
         let sprite = bridge.sprites.get(agent.id);
         let label = bridge.labels.get(agent.id);
         let hitZone = bridge.hitZones.get(agent.id);
+        let speechBubble: PhaserSpeechBubble | undefined;
+        const hasSpeech = getAgentSpeechItems(agent).length > 0;
+        const speechMetrics = getCompactSpeechBubbleMetrics(tileSize, scene.cameras.main.zoom);
+        const speechY = y - speechMetrics.offsetY;
 
         if (!sprite) {
             sprite = scene.add.sprite(x, y, agent.spriteKey, 1);
@@ -1461,19 +1891,45 @@ function renderFrame(
         }
         if (!label) {
             label = scene.add.text(x, y - tileSize * 0.75, agent.name, {
-                fontFamily: 'monospace',
-                fontSize: '11px',
+                fontFamily: PHASER_TEXT_FONT_FAMILY,
+                fontSize: '10.5px',
                 color: '#ffffff',
-                backgroundColor: 'rgba(17, 24, 39, 0.72)',
+                backgroundColor: 'rgba(17, 24, 39, 0.9)',
                 padding: { x: 4, y: 2 },
+                resolution: getTextResolution(),
             });
             label.setOrigin(0.5, 1);
             label.setDepth(30);
             bridge.labels.set(agent.id, label);
         }
+        applyReadableAgentLabelStyle(label, scene.cameras.main.zoom);
+        label.setVisible(false);
+        if (hasSpeech) {
+            speechBubble = ensureCompactSpeechBubble(
+                scene,
+                bridge,
+                agent,
+                x,
+                speechY,
+                tileSize,
+                onSelectAgent,
+                onHoverAgent,
+            );
+            drawCompactSpeechBubble(speechBubble.bubble, tileSize);
+            applyCompactSpeechBubbleMetrics(speechBubble, tileSize, scene.cameras.main.zoom);
+        } else {
+            destroySpeechBubble(bridge, agent.id);
+        }
 
         const duration = Math.hypot(sprite.x - x, sprite.y - y) > 1 ? 240 : 0;
-        scene.tweens.killTweensOf([sprite, label, hitZone]);
+        scene.tweens.killTweensOf([
+            sprite,
+            label,
+            hitZone,
+            speechBubble?.bubble,
+            speechBubble?.text,
+            speechBubble?.hitZone,
+        ].filter(Boolean));
         scene.tweens.add({
             targets: sprite,
             x,
@@ -1495,7 +1951,24 @@ function renderFrame(
             duration,
             ease: 'Linear',
         });
+        if (speechBubble) {
+            scene.tweens.add({
+                targets: [speechBubble.bubble, speechBubble.hitZone],
+                x,
+                y: speechY,
+                duration,
+                ease: 'Linear',
+            });
+            scene.tweens.add({
+                targets: speechBubble.text,
+                x,
+                y: speechY - tileSize * 0.02,
+                duration,
+                ease: 'Linear',
+            });
+        }
         label.setText(agent.name);
+        label.setVisible(false);
     });
 
     updateSelection(bridge);
@@ -2064,10 +2537,13 @@ export default function PixelReplay() {
         <div className="pixel-replay-page">
             {messageContextHolder}
             <PixelTownCanvas
+                key={frame.map.mapId}
                 frame={frame}
                 map={frame.map}
                 selectedAgentId={selectedAgentId}
                 onSelectAgent={setSelectedAgentId}
+                onOpenSetup={() => navigate('/setup')}
+                onOpenSkills={() => navigate('/skills')}
             />
 
             <Card className="pixel-replay-topbar" variant="borderless">
@@ -2136,16 +2612,6 @@ export default function PixelReplay() {
                     {liveStatus && <Tag color="geekblue">Live 已执行 {liveStatus.step_count} 步</Tag>}
                     <Text>{formatTime(bundle?.t ?? timeline[currentIndex]?.t)}</Text>
                     {stepLoading && <Spin size="small" />}
-                    <Tooltip title="创建或配置一个新的实验副本">
-                        <Button icon={<SettingOutlined />} onClick={() => navigate('/setup')}>
-                            新实验
-                        </Button>
-                    </Tooltip>
-                    <Tooltip title="查看和创建真实可执行 Skills">
-                        <Button icon={<ThunderboltOutlined />} onClick={() => navigate('/skills')}>
-                            Skills
-                        </Button>
-                    </Tooltip>
                 </Space>
                 <input
                     className="pixel-replay-range"

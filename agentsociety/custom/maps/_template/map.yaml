@@ -1,0 +1,38 @@
+schema_version: 1
+map_id: your_map_id
+display_name: Your Map Name
+tiled_map_path: visuals/map.json
+tile_size: 32
+character_root: characters
+default_location_order:
+- plaza
+spawn_points:
+- id: resident_start
+  location_id: plaza
+locations:
+- id: plaza
+  name: Plaza
+  aliases:
+  - plaza
+  anchor_tile:
+    x: 1
+    y: 1
+  scene_type: public
+  bounds:
+    x: 0
+    y: 0
+    w: 4
+    h: 4
+  interaction_ids:
+  - wait
+interactions:
+- id: wait
+  name: Wait
+  description: Spend a short moment in the plaza.
+  allowed_location_ids:
+  - plaza
+  effects:
+    action: "{agent_name} is waiting in the plaza"
+    status: resting
+    emotion: calm
+    latest_event: "{agent_name} paused in the plaza."

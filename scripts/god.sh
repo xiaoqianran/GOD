@@ -787,6 +787,7 @@ prepare_experiment() {
   BACKEND_ROOT="$BACKEND_ROOT" \
   RUNTIME_AGENT_PORT="$RUNTIME_AGENT_PORT" \
   GOD_SESSION_PREFIX="$session_prefix" \
+  GOD_MAP_ID="${GOD_MAP_ID:-}" \
   python3 - "$config_path" <<'PY'
 import json
 import os
@@ -798,11 +799,22 @@ config = json.loads(path.read_text(encoding="utf-8"))
 agent_root = str(Path(os.environ["BACKEND_ROOT"]).resolve())
 ws_url = f"ws://127.0.0.1:{os.environ['RUNTIME_AGENT_PORT']}"
 session_prefix = os.environ["GOD_SESSION_PREFIX"]
+requested_map_id = os.environ.get("GOD_MAP_ID", "").strip()
 
 for module in config.get("env_modules", []):
     if module.get("module_type") == "PixelTownSocialEnv":
         kwargs = module.setdefault("kwargs", {})
-        kwargs["map_manifest_path"] = "custom/maps/the_ville/town.yaml"
+        if requested_map_id:
+            kwargs["map_id"] = requested_map_id
+            kwargs["map_manifest_path"] = f"custom/maps/{requested_map_id}/map.yaml"
+        else:
+            map_id = str(kwargs.get("map_id") or "").strip()
+            manifest_path = str(kwargs.get("map_manifest_path") or "").strip()
+            if not manifest_path:
+                if not map_id:
+                    map_id = "the_ville"
+                    kwargs["map_id"] = map_id
+                kwargs["map_manifest_path"] = f"custom/maps/{map_id}/map.yaml"
 
 for agent in config.get("agents", []):
     kwargs = agent.setdefault("kwargs", {})

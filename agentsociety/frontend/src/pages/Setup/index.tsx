@@ -76,6 +76,23 @@ type MapLocation = {
     interaction_ids?: string[];
 };
 
+type MapValidationStatus = {
+    ok: boolean;
+    errors: string[];
+    warnings: string[];
+};
+
+type MapPackageSummary = {
+    map_id: string;
+    display_name: string;
+    manifest_config_path: string;
+    location_count: number;
+    interaction_count: number;
+    character_count: number;
+    locations: MapLocation[];
+    validation_status: MapValidationStatus;
+};
+
 type SetupStatus = {
     workspace_path: string;
     env_file: string;
@@ -93,6 +110,8 @@ type SetupStatus = {
         config_exists?: boolean;
     };
     needs_setup: boolean;
+    selected_map_id: string;
+    maps: MapPackageSummary[];
     map_locations: MapLocation[];
 };
 
@@ -130,6 +149,7 @@ type BasicsForm = {
     title: string;
     background: string;
     agent_count: number;
+    map_id: string;
     language: string;
     start_t: string;
     num_steps: number;
@@ -180,6 +200,7 @@ const defaultBasicsZh: BasicsForm = {
     title: '斯坦福监狱实验适配模拟',
     background: '请生成一个安全、边界清晰的社会角色压力模拟：参与者被分配为管理者、观察者、普通参与者等角色，重点观察权力、规则、协作和情绪变化，不允许羞辱、伤害或强迫行为。',
     agent_count: 10,
+    map_id: 'the_ville',
     language: 'zh',
     start_t: '2026-05-11T08:20:00+08:00',
     num_steps: 4,
@@ -192,6 +213,7 @@ const defaultBasicsEn: BasicsForm = {
     title: 'Stanford Prison Adaptation',
     background: 'Generate a safe, bounded social role-pressure simulation. Participants are assigned roles such as coordinators, observers, and ordinary participants. Focus on power, rules, cooperation, and emotional changes without humiliation, harm, threats, or coercion.',
     agent_count: 10,
+    map_id: 'the_ville',
     language: 'en',
     start_t: '2026-05-11T08:20:00+08:00',
     num_steps: 4,
@@ -213,6 +235,7 @@ const normalizeBasicsValues = (
     title: String(values.title || defaults.title).trim() || defaults.title,
     background: String(values.background || defaults.background).trim() || defaults.background,
     agent_count: Number(values.agent_count || defaults.agent_count),
+    map_id: String(values.map_id || defaults.map_id || 'the_ville').trim() || 'the_ville',
     language: values.language || defaults.language,
     start_t: String(values.start_t || defaults.start_t).trim() || defaults.start_t,
     num_steps: Number(values.num_steps || defaults.num_steps),
@@ -252,6 +275,7 @@ const basicsMatch = (left: BasicsForm, right: BasicsForm) => (
     left.title === right.title
     && left.background === right.background
     && left.agent_count === right.agent_count
+    && left.map_id === right.map_id
     && left.language === right.language
     && left.start_t === right.start_t
     && left.num_steps === right.num_steps
@@ -290,18 +314,45 @@ export default function SetupPage() {
     const [basicsForm] = Form.useForm<BasicsForm>();
     const nextLanguage = i18n.language?.startsWith('en') ? 'zh' : 'en';
 
+    const selectedMapId = String(
+        draft?.init_config?.env_modules?.[0]?.kwargs?.map_id
+        || basicsValues.map_id
+        || status?.selected_map_id
+        || 'the_ville'
+    );
+    const selectedMap = useMemo(() => (
+        (status?.maps || []).find((item) => item.map_id === selectedMapId)
+        || (status?.maps || []).find((item) => item.map_id === status?.selected_map_id)
+        || (status?.maps || [])[0]
+    ), [selectedMapId, status?.maps, status?.selected_map_id]);
+    const mapLocations = selectedMap?.locations?.length ? selectedMap.locations : (status?.map_locations || []);
+    const mapOptions = useMemo(() => (
+        (status?.maps || []).map((item) => ({
+            value: item.map_id,
+            label: `${item.display_name} (${item.location_count}/${item.interaction_count})`,
+            disabled: !item.validation_status?.ok,
+        }))
+    ), [status?.maps]);
     const locationOptions = useMemo(() => (
-        (status?.map_locations || []).map((location) => ({
+        mapLocations.map((location) => ({
             value: location.id,
             label: `${location.name} (${location.id})`,
         }))
-    ), [status?.map_locations]);
+    ), [mapLocations]);
 
     const loadStatus = async () => {
         setLoadingStatus(true);
         try {
             const payload = await fetchJson<SetupStatus>('/api/v1/god/setup/status');
             setStatus(payload);
+            const storedBasics = basicsRef.current;
+            const defaultMapId = localizedDefaultBasics.map_id || 'the_ville';
+            const selectedMapId = payload.selected_map_id || defaultMapId;
+            const selectedMapExists = (payload.maps || []).some((item) => item.map_id === selectedMapId);
+            if (selectedMapExists && storedBasics.map_id === defaultMapId && selectedMapId !== defaultMapId) {
+                syncBasicsValues({ ...storedBasics, map_id: selectedMapId });
+                basicsForm.setFieldsValue({ map_id: selectedMapId });
+            }
             modelForm.setFieldsValue({
                 GOD_LLM_API_BASE: payload.model_config.GOD_LLM_API_BASE?.value || 'https://api.openai.com/v1',
                 GOD_LLM_MODEL: payload.model_config.GOD_LLM_MODEL?.value || 'gpt-5.4',
@@ -816,6 +867,19 @@ export default function SetupPage() {
                             <Input placeholder={copy('basics.experimentTitlePlaceholder')} />
                         </Form.Item>
                     </Col>
+                    <Col xs={24} lg={8}>
+                        <Form.Item
+                            name="map_id"
+                            label={formLabel(copy('basics.mapPackage'), copy('basics.mapPackageTooltip'))}
+                        >
+                            <Select
+                                options={mapOptions}
+                                placeholder="the_ville"
+                                optionFilterProp="label"
+                                showSearch
+                            />
+                        </Form.Item>
+                    </Col>
                     <Col xs={12} lg={4}>
                         <Form.Item
                             name="agent_count"
@@ -885,6 +949,24 @@ export default function SetupPage() {
                     </Col>
                 </Row>
             </Form>
+            {selectedMap && (
+                <Alert
+                    type={selectedMap.validation_status?.ok ? 'info' : 'warning'}
+                    showIcon
+                    message={copy('basics.mapSummary', {
+                        map: selectedMap.display_name,
+                        locations: selectedMap.location_count,
+                        interactions: selectedMap.interaction_count,
+                        characters: selectedMap.character_count,
+                    })}
+                    description={
+                        selectedMap.validation_status?.ok
+                            ? selectedMap.manifest_config_path
+                            : selectedMap.validation_status?.errors?.join(' ')
+                    }
+                    style={{ marginBottom: 16 }}
+                />
+            )}
             <Space>
                 <Button onClick={() => setCurrentStep(0)}>{copy('basics.back')}</Button>
                 <Button
@@ -913,7 +995,7 @@ export default function SetupPage() {
                         {copy('generate.description')}
                     </Paragraph>
                     <Space wrap>
-                        <Tag color="blue">{copy('generate.tagMap')}</Tag>
+                        <Tag color="blue">{copy('generate.tagMap', { map: selectedMap?.display_name || basicsValues.map_id })}</Tag>
                         <Tag color="green">{copy('generate.tagProfiles')}</Tag>
                         <Tag color="purple">{copy('generate.tagCopy')}</Tag>
                     </Space>
@@ -936,6 +1018,7 @@ export default function SetupPage() {
                 description={(
                     <Space direction="vertical" size={4} style={{ width: '100%' }}>
                         <Text>{copy('generate.previewExperimentTitle', { title: basicsValues.title })}</Text>
+                        <Text>{copy('generate.previewMap', { map: selectedMap?.display_name || basicsValues.map_id })}</Text>
                         <Text>
                             {copy('generate.previewSchedule', {
                                 agents: basicsValues.agent_count,
