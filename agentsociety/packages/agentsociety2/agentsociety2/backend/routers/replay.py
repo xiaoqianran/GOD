@@ -31,6 +31,16 @@ from ...backend.services.replay_catalog import (
     query_dataset_rows,
     reflect_dataset_table,
 )
+from ...backend.services.map_packages import (
+    DEFAULT_MAP_ID,
+    character_sprite_path,
+    character_sprites,
+    load_map_package,
+    load_map_package_by_manifest,
+    load_tiled_map,
+    location_asset_path,
+    tileset_image_path,
+)
 from ...storage.replay_metadata import AGENT_PROFILE_DATASET_CAPABILITY
 
 router = APIRouter(prefix="/replay", tags=["replay"])
@@ -115,6 +125,13 @@ class ReplayMapTileset(BaseModel):
     image_url: str
 
 
+class ReplayMapCharacter(BaseModel):
+    name: str
+    image_url: str
+    frame_width: int = 32
+    frame_height: int = 32
+
+
 class ReplayMapLocation(BaseModel):
     id: str
     name: str
@@ -142,6 +159,8 @@ class ReplayMapInfo(BaseModel):
     height: int
     tiled_map_url: str
     tilesets: List[ReplayMapTileset] = Field(default_factory=list)
+    character_root_url: Optional[str] = None
+    character_sprites: List[ReplayMapCharacter] = Field(default_factory=list)
     locations: List[ReplayMapLocation] = Field(default_factory=list)
     interactions: List[ReplayMapInteraction] = Field(default_factory=list)
 
@@ -410,45 +429,43 @@ def _repo_root_from_workspace(workspace_path: str) -> Path:
     return workspace.parent if workspace.name == "quick_experiments" else workspace
 
 
-def _resolve_experiment_map_manifest(
+def _resolve_experiment_map_package(
     workspace_path: str,
     hypothesis_id: str,
     experiment_id: str,
-) -> tuple[Path, Dict[str, Any]]:
+) -> Any:
     config_path = get_init_config_path(workspace_path, hypothesis_id, experiment_id)
     config = _load_structured_file(config_path)
     env_modules = config.get("env_modules") or []
     manifest_path: Optional[Path] = None
+    map_id: Optional[str] = None
     if isinstance(env_modules, list):
         for item in env_modules:
             if not isinstance(item, dict) or item.get("module_type") != "PixelTownSocialEnv":
                 continue
             kwargs = item.get("kwargs") if isinstance(item.get("kwargs"), dict) else {}
+            if kwargs.get("map_id"):
+                map_id = str(kwargs.get("map_id"))
             raw_path = kwargs.get("map_manifest_path")
             if raw_path:
                 path = Path(str(raw_path)).expanduser()
                 manifest_path = path if path.is_absolute() else (_repo_root_from_workspace(workspace_path) / path).resolve()
                 break
-    if manifest_path is None:
-        manifest_path = (
-            _repo_root_from_workspace(workspace_path)
-            / "custom"
-            / "maps"
-            / "the_ville"
-            / "town.yaml"
-        ).resolve()
-    return manifest_path, _load_structured_file(manifest_path)
+    try:
+        if manifest_path is not None and manifest_path.exists():
+            return load_map_package_by_manifest(manifest_path)
+        return load_map_package(map_id or DEFAULT_MAP_ID, _repo_root_from_workspace(workspace_path))
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Map package not found: {exc}") from exc
 
 
-def _resolve_tiled_map_path(manifest_path: Path, manifest: Dict[str, Any]) -> Path:
-    raw = str(manifest.get("tiled_map_path") or "map.json")
-    path = Path(raw).expanduser()
-    return path if path.is_absolute() else (manifest_path.parent / path).resolve()
-
-
-def _load_tiled_map(manifest_path: Path, manifest: Dict[str, Any]) -> tuple[Path, Dict[str, Any]]:
-    tiled_map_path = _resolve_tiled_map_path(manifest_path, manifest)
-    return tiled_map_path, _load_structured_file(tiled_map_path)
+def _resolve_experiment_map_manifest(
+    workspace_path: str,
+    hypothesis_id: str,
+    experiment_id: str,
+) -> tuple[Path, Dict[str, Any]]:
+    package = _resolve_experiment_map_package(workspace_path, hypothesis_id, experiment_id)
+    return package.manifest_path, package.manifest
 
 
 def _map_base_url(
@@ -468,13 +485,14 @@ def _map_info_response(
     hypothesis_id: str,
     experiment_id: str,
 ) -> ReplayMapInfo:
-    manifest_path, manifest = _resolve_experiment_map_manifest(
+    package = _resolve_experiment_map_package(
         workspace_path,
         hypothesis_id,
         experiment_id,
     )
-    tiled_map_path, tiled_map = _load_tiled_map(manifest_path, manifest)
-    map_parent = tiled_map_path.parent.resolve()
+    manifest_path = package.manifest_path
+    manifest = package.manifest
+    tiled_map_path, tiled_map = load_tiled_map(package)
     tilesets: list[ReplayMapTileset] = []
     for index, tileset in enumerate(tiled_map.get("tilesets", []) or []):
         if not isinstance(tileset, dict):
@@ -483,8 +501,9 @@ def _map_info_response(
         image = str(tileset.get("image") or "").strip()
         if not name or not image:
             continue
-        image_path = (map_parent / image).resolve()
-        if not image_path.exists():
+        try:
+            image_path = tileset_image_path(package, index)
+        except Exception:
             continue
         tilesets.append(
             ReplayMapTileset(
@@ -498,6 +517,21 @@ def _map_info_response(
             )
         )
 
+    sprites = [
+        ReplayMapCharacter(
+            name=str(sprite["name"]),
+            image_url=_map_base_url(
+                hypothesis_id,
+                experiment_id,
+                workspace_path,
+                f"/map/characters/{quote(str(sprite['filename']))}",
+            ),
+            frame_width=int(sprite.get("frame_width") or package.tile_size),
+            frame_height=int(sprite.get("frame_height") or package.tile_size),
+        )
+        for sprite in character_sprites(package)
+    ]
+
     locations: list[ReplayMapLocation] = []
     for item in manifest.get("locations", []) or []:
         if not isinstance(item, dict):
@@ -509,10 +543,11 @@ def _map_info_response(
         visual_asset_url: Optional[str] = None
         visual_asset = str(item.get("visual_asset") or "").strip()
         if visual_asset:
-            visual_path = Path(visual_asset).expanduser()
-            if not visual_path.is_absolute():
-                visual_path = (manifest_path.parent / visual_path).resolve()
-            if visual_path.exists() and visual_path.is_file():
+            try:
+                visual_path = location_asset_path(package, location_id)
+            except Exception:
+                visual_path = None
+            if visual_path is not None and visual_path.exists() and visual_path.is_file():
                 visual_asset_url = _map_base_url(
                     hypothesis_id,
                     experiment_id,
@@ -571,6 +606,13 @@ def _map_info_response(
             "/map/tiled",
         ),
         tilesets=tilesets,
+        character_root_url=_map_base_url(
+            hypothesis_id,
+            experiment_id,
+            workspace_path,
+            "/map/characters",
+        ),
+        character_sprites=sprites,
         locations=locations,
         interactions=interactions,
     )
@@ -905,12 +947,12 @@ async def get_replay_tiled_map(
     experiment_id: str,
     workspace_path: str = Query(..., description="Workspace root path"),
 ) -> Dict[str, Any]:
-    manifest_path, manifest = _resolve_experiment_map_manifest(
+    package = _resolve_experiment_map_package(
         workspace_path,
         hypothesis_id,
         experiment_id,
     )
-    _, tiled_map = _load_tiled_map(manifest_path, manifest)
+    _, tiled_map = load_tiled_map(package)
     return tiled_map
 
 
@@ -921,21 +963,34 @@ async def get_replay_map_asset(
     tileset_index: int,
     workspace_path: str = Query(..., description="Workspace root path"),
 ) -> FileResponse:
-    manifest_path, manifest = _resolve_experiment_map_manifest(
+    package = _resolve_experiment_map_package(
         workspace_path,
         hypothesis_id,
         experiment_id,
     )
-    tiled_map_path, tiled_map = _load_tiled_map(manifest_path, manifest)
-    tilesets = tiled_map.get("tilesets", []) or []
-    if tileset_index < 0 or tileset_index >= len(tilesets):
-        raise HTTPException(status_code=404, detail="Tileset not found")
-    tileset = tilesets[tileset_index]
-    if not isinstance(tileset, dict) or not tileset.get("image"):
-        raise HTTPException(status_code=404, detail="Tileset image not found")
-    image_path = (tiled_map_path.parent / str(tileset["image"])).resolve()
-    if not image_path.exists() or not image_path.is_file():
-        raise HTTPException(status_code=404, detail=f"Tileset image not found: {image_path}")
+    try:
+        image_path = tileset_image_path(package, tileset_index)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Tileset image not found: {exc}") from exc
+    return FileResponse(image_path)
+
+
+@router.get("/{hypothesis_id}/{experiment_id}/map/characters/{character_name}")
+async def get_replay_map_character_asset(
+    hypothesis_id: str,
+    experiment_id: str,
+    character_name: str,
+    workspace_path: str = Query(..., description="Workspace root path"),
+) -> FileResponse:
+    package = _resolve_experiment_map_package(
+        workspace_path,
+        hypothesis_id,
+        experiment_id,
+    )
+    try:
+        image_path = character_sprite_path(package, character_name)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Character sprite not found: {exc}") from exc
     return FileResponse(image_path)
 
 
@@ -946,28 +1001,18 @@ async def get_replay_map_location_asset(
     location_id: str,
     workspace_path: str = Query(..., description="Workspace root path"),
 ) -> FileResponse:
-    manifest_path, manifest = _resolve_experiment_map_manifest(
+    package = _resolve_experiment_map_package(
         workspace_path,
         hypothesis_id,
         experiment_id,
     )
-    requested = str(location_id)
-    for item in manifest.get("locations", []) or []:
-        if not isinstance(item, dict) or str(item.get("id") or "") != requested:
-            continue
-        visual_asset = str(item.get("visual_asset") or "").strip()
-        if not visual_asset:
-            raise HTTPException(status_code=404, detail="Location has no visual asset")
-        image_path = Path(visual_asset).expanduser()
-        if not image_path.is_absolute():
-            image_path = (manifest_path.parent / image_path).resolve()
-        if not image_path.exists() or not image_path.is_file():
-            raise HTTPException(
-                status_code=404,
-                detail=f"Location visual asset not found: {image_path}",
-            )
-        return FileResponse(image_path)
-    raise HTTPException(status_code=404, detail="Location not found")
+    try:
+        image_path = location_asset_path(package, location_id)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Location visual asset not found: {exc}") from exc
+    if not image_path.exists() or not image_path.is_file():
+        raise HTTPException(status_code=404, detail=f"Location visual asset not found: {image_path}")
+    return FileResponse(image_path)
 
 
 @router.get(

@@ -69,7 +69,7 @@ language: 优先中文，必要时双语补充
 
 ```yaml
 PixelTownSocialEnv:
-  map_manifest_path:           custom/maps/the_ville/town.yaml
+  map_manifest_path:           custom/maps/the_ville/map.yaml
   default_group_name:          The Ville Daily Life Chat
   movement_tiles_per_second:   8.0      # 角色在地图上的视觉移动速度
   movement_min_steps_per_trip: 3        # 跨地点最少占多少 step
@@ -83,7 +83,7 @@ PixelTownSocialEnv:
 
 ## 🗺️ World & Map
 
-地图源自经典 [The Ville](https://github.com/joonspk-research/generative_agents) 像素小镇，被裁剪为 **10 个语义地点 + 65 个交互**。地图清单见 [`custom/maps/the_ville/town.yaml`](../../../custom/maps/the_ville/town.yaml)。
+地图源自经典 [The Ville](https://github.com/joonspk-research/generative_agents) 像素小镇，被整理成 GOD 可拔插地图包，并裁剪为 **10 个语义地点 + 65 个交互**。地图清单见 [`custom/maps/the_ville/map.yaml`](../../../custom/maps/the_ville/map.yaml)。
 
 <table>
 <tr>

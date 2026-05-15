@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="docs/assets/brand/logo.png" alt="GOD logo" height="32" />
+  <img src="docs/assets/logo_no_bg.png" alt="GOD logo" height="32" />
   &nbsp;GOD · Govern · Observe · Direct
 </h1>
 

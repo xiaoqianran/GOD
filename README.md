@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="docs/assets/brand/logo.png" alt="GOD logo" height="32" />
+  <img src="docs/assets/logo_no_bg.png" alt="GOD logo" height="32" />
   &nbsp;GOD · Govern · Observe · Direct
 </h1>
 
@@ -204,6 +204,17 @@ A late-spring Tuesday morning at 8:20. Sunny, 18°C, light breeze. A 200-person 
 </table>
 
 <sub>Every resident carries a full profile: age, family, housing, economic status, health, daily routine, skills, needs, worries, secrets, social network, language style, quirks, short- & long-term goals.</sub>
+
+## 🗺️ Pluggable Map Packages
+
+GOD now discovers map packages automatically from `agentsociety/custom/maps/<map_id>/`. To add a map, copy [`agentsociety/custom/maps/_template/`](agentsociety/custom/maps/_template/), replace `map.yaml`, `visuals/map.json`, tileset PNGs, and optional `characters/` or `location_assets/`, then run:
+
+```bash
+cd agentsociety
+uv run python scripts/validate_map_package.py custom/maps/<map_id>
+```
+
+The setup wizard will list valid packages without code changes. v1 supports Tiled JSON maps with PNG tilesets and a `Collisions` layer where `0` means walkable. See [docs/MAP_PACKAGES.md](docs/MAP_PACKAGES.md) for the full package contract.
 
 ## 🛣️ Roadmap
 

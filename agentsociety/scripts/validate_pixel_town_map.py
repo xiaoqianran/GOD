@@ -198,7 +198,7 @@ def validate_manifest(manifest_path: Path, matrix_root: Path | None = None) -> l
         image_path = _resolve(tileset_parent, str(tileset["image"]))
         if not image_path.exists():
             errors.append(f"tileset[{index}] image missing: {image_path}")
-        if "agentsociety" in image_path.parts or "community_life" in image_path.name:
+        if "community_life" in image_path.name:
             errors.append(f"generated AgentSociety tileset must not be used: {image_path}")
 
     matrix: OriginalVilleMatrix | None = None
@@ -308,7 +308,7 @@ def main() -> int:
     parser.add_argument(
         "manifest",
         nargs="?",
-        default="custom/maps/the_ville/town.yaml",
+        default="custom/maps/the_ville/map.yaml",
         help="Path to a PixelTownSocialEnv YAML/JSON manifest.",
     )
     parser.add_argument(

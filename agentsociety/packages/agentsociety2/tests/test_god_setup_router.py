@@ -25,9 +25,72 @@ def _configure_tmp_god(monkeypatch, tmp_path: Path) -> None:
         "GOD_LLM_MODEL",
         "GOD_EXPERIMENT",
         "GOD_EXPERIMENT_RUN",
+        "GOD_MAP_ID",
         "GOD_SETUP_MODE",
     ):
         monkeypatch.delenv(key, raising=False)
+
+
+def _write_test_map_package(tmp_path: Path, map_id: str, *, valid: bool = True) -> Path:
+    package = tmp_path / "agentsociety" / "custom" / "maps" / map_id
+    (package / "visuals").mkdir(parents=True)
+    if valid:
+        (package / "visuals" / "map.json").write_text(
+            json.dumps(
+                {
+                    "type": "map",
+                    "orientation": "orthogonal",
+                    "width": 4,
+                    "height": 4,
+                    "tilewidth": 32,
+                    "tileheight": 32,
+                    "tilesets": [],
+                    "layers": [
+                        {"name": "Ground", "type": "tilelayer", "width": 4, "height": 4, "data": [0] * 16},
+                        {"name": "Collisions", "type": "tilelayer", "width": 4, "height": 4, "data": [0] * 16},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+    (package / "map.yaml").write_text(
+        "\n".join(
+            [
+                "schema_version: 1",
+                f"map_id: {map_id}",
+                f"display_name: {map_id.title()}",
+                "tiled_map_path: visuals/map.json",
+                "tile_size: 32",
+                "default_location_order:",
+                "- lab",
+                "- yard",
+                "spawn_points:",
+                "- id: start",
+                "  location_id: lab",
+                "locations:",
+                "- id: lab",
+                "  name: Lab",
+                "  aliases: [lab]",
+                "  anchor_tile: {x: 1, y: 1}",
+                "  interaction_ids: [inspect]",
+                "- id: yard",
+                "  name: Yard",
+                "  aliases: [yard]",
+                "  anchor_tile: {x: 2, y: 1}",
+                "  interaction_ids: [walk]",
+                "interactions:",
+                "- id: inspect",
+                "  name: Inspect",
+                "  allowed_location_ids: [lab]",
+                "- id: walk",
+                "  name: Walk",
+                "  allowed_location_ids: [yard]",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return package
 
 
 def _raw_draft() -> dict:
@@ -110,6 +173,22 @@ def test_setup_status_exposes_setup_mode(monkeypatch, tmp_path):
     assert status["setup_mode"] is True
 
 
+def test_setup_status_scans_map_packages_and_keeps_invalid_visible(monkeypatch, tmp_path):
+    _configure_tmp_god(monkeypatch, tmp_path)
+    _write_test_map_package(tmp_path, "the_ville")
+    _write_test_map_package(tmp_path, "lab_map")
+    _write_test_map_package(tmp_path, "broken_map", valid=False)
+    (tmp_path / ".env").write_text("GOD_MAP_ID=lab_map\n", encoding="utf-8")
+
+    status = anyio.run(god_setup.setup_status)
+
+    by_id = {item["map_id"]: item for item in status["maps"]}
+    assert status["selected_map_id"] == "lab_map"
+    assert by_id["lab_map"]["validation_status"]["ok"] is True
+    assert by_id["broken_map"]["validation_status"]["ok"] is False
+    assert status["map_locations"][0]["id"] == "lab"
+
+
 def test_merged_env_prefers_saved_env_file_over_stale_process_env(monkeypatch, tmp_path):
     _configure_tmp_god(monkeypatch, tmp_path)
     monkeypatch.setenv("GOD_LLM_API_BASE", "https://api.openai.com/v1")
@@ -124,6 +203,29 @@ def test_merged_env_prefers_saved_env_file_over_stale_process_env(monkeypatch, t
 
     assert env["GOD_LLM_API_BASE"] == "https://dashscope.aliyuncs.com/compatible-mode/v1"
     assert env["GOD_LLM_MODEL"] == "qwen-plus"
+
+
+def test_normalize_draft_uses_selected_map_package(monkeypatch, tmp_path):
+    _configure_tmp_god(monkeypatch, tmp_path)
+    _write_test_map_package(tmp_path, "the_ville")
+    _write_test_map_package(tmp_path, "lab_map")
+
+    raw = _raw_draft()
+    draft = god_setup._normalize_draft(
+        raw,
+        DraftBasics(
+            title="Lab Scenario",
+            background="Coordinate a lab handoff.",
+            agent_count=2,
+            map_id="lab_map",
+        ),
+    )
+
+    env = draft["init_config"]["env_modules"][0]["kwargs"]
+    assert env["map_id"] == "lab_map"
+    assert env["map_manifest_path"] == "custom/maps/lab_map/map.yaml"
+    assert draft["experiment_context"]["map_id"] == "lab_map"
+    assert set(env["initial_locations"].values()) <= {"lab", "yard"}
 
 
 def test_generate_draft_normalizes_model_output(monkeypatch, tmp_path):
@@ -188,6 +290,29 @@ def test_generate_draft_uses_saved_api_base_when_request_omits_it(monkeypatch, t
     assert captured["model"] == "qwen-plus"
 
 
+def test_generate_draft_falls_back_to_default_map_when_selected_missing(monkeypatch, tmp_path):
+    _configure_tmp_god(monkeypatch, tmp_path)
+    _write_test_map_package(tmp_path, "the_ville")
+    captured = {}
+
+    async def fake_call(**kwargs):
+        captured["package"] = kwargs["package"]
+        return _raw_draft()
+
+    monkeypatch.setattr(god_setup, "_call_openai_compatible", fake_call)
+
+    draft = anyio.run(
+        god_setup.generate_draft,
+        GenerateDraftRequest(
+            model_config=ModelConfigPayload(GOD_LLM_API_KEY="sk-test"),
+            basics=DraftBasics(agent_count=2, map_id="missing_map"),
+        ),
+    )
+
+    assert captured["package"].map_id == "the_ville"
+    assert draft["experiment_context"]["map_id"] == "the_ville"
+
+
 def test_normalize_draft_replaces_generic_agent_names(monkeypatch, tmp_path):
     _configure_tmp_god(monkeypatch, tmp_path)
     monkeypatch.setattr(god_setup, "_known_location_ids", lambda: ["school", "park", "cafe"])
@@ -223,9 +348,10 @@ def test_normalize_draft_backfills_scenario_specific_agents(monkeypatch, tmp_pat
         ),
     )
 
-    profiles = [agent["kwargs"]["profile"] for agent in draft["init_config"]["agents"]]
-    assert profiles[0]["skills"] != profiles[1]["skills"]
-    assert "库存盘点" in profiles[1]["skills"]
+    agents = draft["init_config"]["agents"]
+    profiles = [agent["kwargs"]["profile"] for agent in agents]
+    assert agents[0]["kwargs"]["skill_ids"] != agents[1]["kwargs"]["skill_ids"]
+    assert "skills" not in profiles[0]
     assert "采购" in profiles[1]["persona"]
 
 
