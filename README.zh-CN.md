@@ -7,7 +7,7 @@
   <img src="docs/assets/screenshots/00-hero.png" alt="GOD — Govern · Observe · Direct" width="100%" />
 </p>
 <p align="center">
-  <b>🌩️ 像神一样，俯瞰一座由 Agent 组成的小镇。</b><br/>
+  <b>🌩️ 像上帝一样，俯瞰一座由 Agent 组成的小镇。</b><br/>
   暂停时间。操控环境。对某个灵魂发问。一键重置 —— 全部在一个屏幕里完成。
 </p>
 
@@ -214,30 +214,27 @@ cd agentsociety
 uv run python scripts/validate_map_package.py custom/maps/<map_id>
 ```
 
-配置向导会自动列出所有合法的地图包，完全不用改代码。v1 支持带 PNG tileset 的 Tiled JSON 地图，并要求一个 `Collisions` 层（`0` 表示可走）。完整契约见 [docs/MAP_PACKAGES.zh-CN.md](docs/MAP_PACKAGES.zh-CN.md)。
+配置向导会自动列出所有合法的地图包，完全不用改代码。v1 支持带 PNG tileset 的 Tiled JSON 地图，并要求一个 `Collisions` 层（`0` 表示可走）。PKU 校园地图包已作为独立下载提供，下载后放到 `agentsociety/custom/maps/pku/` 即可使用，这样主仓不会被大地图素材撑大。完整契约见 [docs/MAP_PACKAGES.zh-CN.md](docs/MAP_PACKAGES.zh-CN.md)。
 
 ## 🛣️ Roadmap
 
-### ✅ 已发布
+### ✅ 已完成
 
-| | |
-| --- | --- |
-| 🗺️ **可拔插地图包** | 把一个文件夹丢到 `agentsociety/custom/maps/<map_id>/`，刷新向导即出现新世界。自动发现、自动校验、热插拔。详见 [`docs/MAP_PACKAGES.zh-CN.md`](docs/MAP_PACKAGES.zh-CN.md)。 |
-| 🪄 **零代码配置向导** | 五步浏览器流程：一台空机器到活生生的小镇。不用改 `.env`，不用命令行参数。 |
-| 🧪 **可复现实验** | 实验以普通文件夹形式发布，位于 `quick_experiments/<hypothesis>/<experiment>/`。把 `GOD_EXPERIMENT` 指过去就能跑。 |
+- [x] 🗺️ **可拔插地图包** —— 把一个文件夹丢到 `agentsociety/custom/maps/<map_id>/`，刷新向导即出现新世界。自动发现、自动校验、热插拔。详见 [`docs/MAP_PACKAGES.zh-CN.md`](docs/MAP_PACKAGES.zh-CN.md)。
+- [x] 🏫 **PKU 地图包下载** —— PKU 校园地图已作为独立下载包提供，不放进 git 历史，避免撑大主仓。
+- [x] 🪄 **零代码配置向导** —— 五步浏览器流程：一台空机器到活生生的小镇。不用改 `.env`，不用命令行参数。
+- [x] 🧪 **可复现实验** —— 实验以普通文件夹形式发布，位于 `quick_experiments/<hypothesis>/<experiment>/`。把 `GOD_EXPERIMENT` 指过去就能跑。
 
-### 🛣️ 进行中
+### 🛣️ 未完成 / 进行中
 
-| | |
-| --- | --- |
-| 🤖 **可拔插 Agent 运行时** | 让 LLM runtime 和 persona 模板能像地图一样干净地替换。 |
-| 🧪 **多实验编排** | 在同一个控制台里跑多个实验、对照组和重复试验。 |
-| 🗺️ **实时地图生成** | 地图随事件、修缮、阻塞、人群动态演化。 |
-| 🌦️ **事件响应世界** | 天气、事故、节日、谣言、供应短缺。 |
-| 🌐 **大规模仿真** | 接入 AgentSociety 的批量 Agent、分片运行、采样 replay。 |
-| 📊 **实验评估** | 跨实验指标、行为差异、干预效果分析。 |
-| 📝 **操作员工作流** | 每个 step 的笔记、标签、书签、关键事件摘要。 |
-| 🌍 **公开 Demo & 场景分享** | 托管 demo、实验和地图模板。 |
+- [ ] 🤖 **可拔插 Agent 运行时** —— 让 LLM runtime 和 persona 模板能像地图一样干净地替换。
+- [ ] 🧪 **多实验编排** —— 在同一个控制台里跑多个实验、对照组和重复试验。
+- [ ] 🗺️ **实时地图生成** —— 地图随事件、修缮、阻塞、人群动态演化。
+- [ ] 🌦️ **事件响应世界** —— 天气、事故、节日、谣言、供应短缺。
+- [ ] 🌐 **大规模仿真** —— 接入 AgentSociety 的批量 Agent、分片运行、采样 replay。
+- [ ] 📊 **实验评估** —— 跨实验指标、行为差异、干预效果分析。
+- [ ] 📝 **操作员工作流** —— 每个 step 的笔记、标签、书签、关键事件摘要。
+- [ ] 🌍 **公开 Demo & 场景分享** —— 托管 demo、实验和地图模板。
 
 有想法？欢迎来 [issue 和 PR](#-参与开发) 聊。
 

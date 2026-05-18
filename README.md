@@ -215,30 +215,27 @@ cd agentsociety
 uv run python scripts/validate_map_package.py custom/maps/<map_id>
 ```
 
-The setup wizard will list valid packages without code changes. v1 supports Tiled JSON maps with PNG tilesets and a `Collisions` layer where `0` means walkable. See [docs/MAP_PACKAGES.md](docs/MAP_PACKAGES.md) for the full package contract.
+The setup wizard will list valid packages without code changes. v1 supports Tiled JSON maps with PNG tilesets and a `Collisions` layer where `0` means walkable. A PKU campus map package is available as a separate download so the main repository stays lightweight; place it under `agentsociety/custom/maps/pku/` after downloading. See [docs/MAP_PACKAGES.md](docs/MAP_PACKAGES.md) for the full package contract.
 
 ## 🛣️ Roadmap
 
-### ✅ Recently shipped
+### ✅ Completed
 
-| | |
-| --- | --- |
-| 🗺️ **Pluggable map packages** | Drop a folder under `agentsociety/custom/maps/<map_id>/`, refresh the wizard, and a new world is selectable. Auto-discovered, validated, hot-swappable. See [`docs/MAP_PACKAGES.md`](docs/MAP_PACKAGES.md). |
-| 🪄 **No-code setup wizard** | A 5-step browser flow that turns a blank machine into a live society — no `.env` edits, no command-line flags. |
-| 🧪 **Scripted experiments** | Ship reproducible experiments as plain folders under `quick_experiments/<hypothesis>/<experiment>/`. Point `GOD_EXPERIMENT` at one and run. |
+- [x] 🗺️ **Pluggable map packages** — drop a folder under `agentsociety/custom/maps/<map_id>/`, refresh the wizard, and a new world is selectable. Auto-discovered, validated, hot-swappable. See [`docs/MAP_PACKAGES.md`](docs/MAP_PACKAGES.md).
+- [x] 🏫 **PKU map package download** — the PKU campus map is provided as a separate downloadable package, kept out of git history to avoid bloating the repository.
+- [x] 🪄 **No-code setup wizard** — a 5-step browser flow that turns a blank machine into a live society, with no `.env` edits or command-line flags.
+- [x] 🧪 **Scripted experiments** — reproducible experiments ship as plain folders under `quick_experiments/<hypothesis>/<experiment>/`; point `GOD_EXPERIMENT` at one and run.
 
-### 🛣️ Next
+### 🛣️ Not Yet Done
 
-| | |
-| --- | --- |
-| 🤖 **Pluggable agent runtimes** | Swap LLM runtimes and persona templates as cleanly as we now swap maps. |
-| 🧪 **Multi-experiment orchestration** | Run experiments, control groups, and repeats side-by-side. |
-| 🗺️ **Live map generation** | Maps that evolve with events, repairs, blockages, crowds. |
-| 🌦️ **Event-responsive worlds** | Weather, accidents, festivals, rumors, shortages. |
-| 🌐 **Large-scale simulation** | AgentSociety batching, sharded runs, sampled replay. |
-| 📊 **Experiment evaluation** | Cross-run metrics, behavior diffs, intervention analysis. |
-| 📝 **Operator workflow** | Per-step notes, tags, bookmarks, key-event summaries. |
-| 🌍 **Hosted demo & scenario sharing** | Public demo, experiment & map templates. |
+- [ ] 🤖 **Pluggable agent runtimes** — swap LLM runtimes and persona templates as cleanly as we now swap maps.
+- [ ] 🧪 **Multi-experiment orchestration** — run experiments, control groups, and repeats side-by-side.
+- [ ] 🗺️ **Live map generation** — maps that evolve with events, repairs, blockages, and crowds.
+- [ ] 🌦️ **Event-responsive worlds** — weather, accidents, festivals, rumors, shortages.
+- [ ] 🌐 **Large-scale simulation** — AgentSociety batching, sharded runs, sampled replay.
+- [ ] 📊 **Experiment evaluation** — cross-run metrics, behavior diffs, intervention analysis.
+- [ ] 📝 **Operator workflow** — per-step notes, tags, bookmarks, key-event summaries.
+- [ ] 🌍 **Hosted demo & scenario sharing** — public demo, experiment and map templates.
 
 Have an idea? [Open an issue or PR](#-contributing).
 
