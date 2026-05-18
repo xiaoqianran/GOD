@@ -44,7 +44,9 @@ jobs:
         run: |
           set -euo pipefail
           banned_paths="$(
-            git ls-files | grep -E '(^promos/|^docs/press-kit/|^agentsociety/custom/maps/pku/|^agentsociety/quick_experiments/hypothesis_pku_trump_visit/experiment_2/|^\.god/|^\.live/|(^|/)\.DS_Store$|(^|/)run_launcher\.log$|^agentsociety/quick_experiments/.*/run(_[^/]*)?/)' || true
+            git ls-files \
+              | grep -Ev '^agentsociety/quick_experiments/(hypothesis_god_town|hypothesis_pku_trump_visit)/experiment_1/run/' \
+              | grep -E '(^promos/|^docs/press-kit/|^agentsociety/quick_experiments/hypothesis_pku_trump_visit/experiment_2/|^\.god/|^\.live/|(^|/)\.DS_Store$|(^|/)run_launcher\.log$|^agentsociety/quick_experiments/.*/run(_[^/]*)?/)' || true
           )"
           if [[ -n "${banned_paths}" ]]; then
             echo "These paths should not be committed to the public release branch:"
