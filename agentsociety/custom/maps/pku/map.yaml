@@ -1,0 +1,552 @@
+schema_version: 1
+map_id: pku
+display_name: 北京大学燕园
+tiled_map_path: visuals/map.json
+tile_size: 32
+character_root: characters
+character_frame_width: 32
+character_frame_height: 32
+default_location_order:
+- dormitory
+- canteen
+- teaching_building
+- library
+- weiming_lake
+- boya_pagoda
+- centennial_hall
+- lab_building
+- gymnasium
+- campus_green
+- west_gate
+- east_gate
+recommended_roles:
+- role: undergraduate student
+  default_location_id: dormitory
+- role: graduate researcher
+  default_location_id: lab_building
+- role: librarian
+  default_location_id: library
+- role: professor
+  default_location_id: teaching_building
+- role: visitor
+  default_location_id: west_gate
+- role: student organizer
+  default_location_id: campus_green
+spawn_points:
+- id: student_start
+  location_id: dormitory
+- id: researcher_start
+  location_id: lab_building
+- id: library_start
+  location_id: library
+- id: visitor_start
+  location_id: west_gate
+- id: lake_start
+  location_id: weiming_lake
+- id: canteen_start
+  location_id: canteen
+locations:
+- id: west_gate
+  name: 北京大学西门
+  aliases:
+  - west gate
+  - pku west gate
+  - 西门
+  - 北大西门
+  source_note: High-detail PKU Yanyuan pixel map generated from package-local imagegen
+    exterior, interior, character, and campus-reference assets; not surveyed GIS coordinates.
+  anchor_tile:
+    x: 7
+    y: 52
+  interaction_ids:
+  - enter_campus
+  - campus_tour
+  scene_type: gate
+  bounds:
+    x: 1
+    y: 48
+    w: 12
+    h: 10
+- id: east_gate
+  name: 北京大学东门
+  aliases:
+  - east gate
+  - pku east gate
+  - 东门
+  - 北大东门
+  source_note: High-detail PKU Yanyuan pixel map generated from package-local imagegen
+    exterior, interior, character, and campus-reference assets; not surveyed GIS coordinates.
+  anchor_tile:
+    x: 134
+    y: 52
+  interaction_ids:
+  - enter_campus
+  - meet_at_gate
+  scene_type: gate
+  bounds:
+    x: 132
+    y: 47
+    w: 7
+    h: 10
+- id: south_gate
+  name: 北京大学南门
+  aliases:
+  - south gate
+  - 南门
+  - campus entrance
+  source_note: High-detail PKU Yanyuan pixel map generated from package-local imagegen
+    exterior, interior, character, and campus-reference assets; not surveyed GIS coordinates.
+  anchor_tile:
+    x: 70
+    y: 91
+  interaction_ids:
+  - enter_campus
+  - campus_tour
+  scene_type: gate
+  bounds:
+    x: 65
+    y: 89
+    w: 12
+    h: 9
+- id: weiming_lake
+  name: 未名湖
+  aliases:
+  - Weiming Lake
+  - lake
+  - 未名湖
+  - 湖边
+  source_note: High-detail PKU Yanyuan pixel map generated from package-local imagegen
+    exterior, interior, character, and campus-reference assets; not surveyed GIS coordinates.
+  anchor_tile:
+    x: 49
+    y: 51
+  interaction_ids:
+  - walk_lake
+  - outdoor_reflection
+  - campus_tour
+  scene_type: park
+  bounds:
+    x: 22
+    y: 14
+    w: 43
+    h: 40
+- id: boya_pagoda
+  name: 博雅塔
+  aliases:
+  - Boya Pagoda
+  - pagoda
+  - 博雅塔
+  source_note: High-detail PKU Yanyuan pixel map generated from package-local imagegen
+    exterior, interior, character, and campus-reference assets; not surveyed GIS coordinates.
+  anchor_tile:
+    x: 66
+    y: 51
+  interaction_ids:
+  - campus_tour
+  - take_photo
+  - outdoor_reflection
+  scene_type: landmark
+  bounds:
+    x: 60
+    y: 39
+    w: 7
+    h: 13
+- id: library
+  name: 北京大学图书馆
+  aliases:
+  - library
+  - PKU Library
+  - 图书馆
+  source_note: High-detail PKU Yanyuan pixel map generated from package-local imagegen
+    exterior, interior, character, and campus-reference assets; not surveyed GIS coordinates.
+  anchor_tile:
+    x: 79
+    y: 34
+  interaction_ids:
+  - study_library
+  - borrow_book
+  - research_discussion
+  scene_type: library
+  bounds:
+    x: 70
+    y: 21
+    w: 23
+    h: 14
+- id: centennial_hall
+  name: 百周年纪念讲堂
+  aliases:
+  - Centennial Hall
+  - 百年讲堂
+  - 讲堂
+  source_note: High-detail PKU Yanyuan pixel map generated from package-local imagegen
+    exterior, interior, character, and campus-reference assets; not surveyed GIS coordinates.
+  anchor_tile:
+    x: 80
+    y: 57
+  interaction_ids:
+  - attend_lecture
+  - club_event
+  - public_talk
+  scene_type: auditorium
+  bounds:
+    x: 72
+    y: 47
+    w: 16
+    h: 13
+- id: teaching_building
+  name: 教学楼
+  aliases:
+  - teaching building
+  - classroom
+  - 教学楼
+  - 教室
+  source_note: High-detail PKU Yanyuan pixel map generated from package-local imagegen
+    exterior, interior, character, and campus-reference assets; not surveyed GIS coordinates.
+  anchor_tile:
+    x: 114
+    y: 27
+  interaction_ids:
+  - attend_class
+  - office_hours
+  - group_project
+  scene_type: school
+  bounds:
+    x: 100
+    y: 12
+    w: 27
+    h: 16
+- id: dormitory
+  name: 学生宿舍
+  aliases:
+  - dorm
+  - dormitory
+  - 宿舍
+  source_note: High-detail PKU Yanyuan pixel map generated from package-local imagegen
+    exterior, interior, character, and campus-reference assets; not surveyed GIS coordinates.
+  anchor_tile:
+    x: 30
+    y: 76
+  interaction_ids:
+  - rest_dorm
+  - chat_roommates
+  - prepare_day
+  scene_type: home
+  bounds:
+    x: 18
+    y: 66
+    w: 24
+    h: 17
+- id: canteen
+  name: 学生食堂
+  aliases:
+  - canteen
+  - dining hall
+  - 食堂
+  source_note: High-detail PKU Yanyuan pixel map generated from package-local imagegen
+    exterior, interior, character, and campus-reference assets; not surveyed GIS coordinates.
+  anchor_tile:
+    x: 50
+    y: 69
+  interaction_ids:
+  - eat_canteen
+  - casual_meetup
+  - share_news
+  scene_type: cafe
+  bounds:
+    x: 42
+    y: 60
+    w: 16
+    h: 15
+- id: gymnasium
+  name: 体育馆
+  aliases:
+  - gym
+  - gymnasium
+  - 体育馆
+  source_note: High-detail PKU Yanyuan pixel map generated from package-local imagegen
+    exterior, interior, character, and campus-reference assets; not surveyed GIS coordinates.
+  anchor_tile:
+    x: 118
+    y: 80
+  interaction_ids:
+  - exercise
+  - team_practice
+  - wellness_check
+  scene_type: sports
+  bounds:
+    x: 106
+    y: 70
+    w: 27
+    h: 17
+- id: lab_building
+  name: 理科实验楼
+  aliases:
+  - lab
+  - laboratory
+  - 实验楼
+  source_note: High-detail PKU Yanyuan pixel map generated from package-local imagegen
+    exterior, interior, character, and campus-reference assets; not surveyed GIS coordinates.
+  anchor_tile:
+    x: 120
+    y: 42
+  interaction_ids:
+  - run_experiment
+  - research_discussion
+  - lab_safety_check
+  scene_type: lab
+  bounds:
+    x: 104
+    y: 30
+    w: 29
+    h: 17
+- id: admin_building
+  name: 办公楼
+  aliases:
+  - admin
+  - office
+  - 办公楼
+  source_note: High-detail PKU Yanyuan pixel map generated from package-local imagegen
+    exterior, interior, character, and campus-reference assets; not surveyed GIS coordinates.
+  anchor_tile:
+    x: 76
+    y: 41
+  interaction_ids:
+  - office_hours
+  - department_meeting
+  - paperwork
+  scene_type: office
+  bounds:
+    x: 66
+    y: 30
+    w: 22
+    h: 12
+- id: campus_green
+  name: 校园草坪
+  aliases:
+  - green
+  - quad
+  - 草坪
+  source_note: High-detail PKU Yanyuan pixel map generated from package-local imagegen
+    exterior, interior, character, and campus-reference assets; not surveyed GIS coordinates.
+  anchor_tile:
+    x: 60
+    y: 60
+  interaction_ids:
+  - club_event
+  - outdoor_reflection
+  - campus_tour
+  scene_type: park
+  bounds:
+    x: 51
+    y: 54
+    w: 21
+    h: 13
+interactions:
+- id: enter_campus
+  name: 进入校园
+  description: Enter or leave campus through a gate while checking plans.
+  allowed_location_ids:
+  - west_gate
+  - east_gate
+  - south_gate
+  effects:
+    social_context: campus_daily_life
+- id: meet_at_gate
+  name: 校门碰头
+  description: Meet someone at a campus gate before moving inward.
+  allowed_location_ids:
+  - east_gate
+  - west_gate
+  effects:
+    social_context: campus_daily_life
+- id: campus_tour
+  name: 校园导览
+  description: Guide visitors through landmark routes and share campus context.
+  allowed_location_ids:
+  - west_gate
+  - south_gate
+  - weiming_lake
+  - boya_pagoda
+  - campus_green
+  effects:
+    social_context: campus_daily_life
+- id: walk_lake
+  name: 湖边散步
+  description: Walk around Weiming Lake and hold a quiet conversation.
+  allowed_location_ids:
+  - weiming_lake
+  effects:
+    social_context: campus_daily_life
+- id: outdoor_reflection
+  name: 户外思考
+  description: Pause outdoors to reflect, plan, or decompress.
+  allowed_location_ids:
+  - weiming_lake
+  - boya_pagoda
+  - campus_green
+  effects:
+    social_context: campus_daily_life
+- id: take_photo
+  name: 地标拍照
+  description: Take a landmark photo or describe what can be seen from the spot.
+  allowed_location_ids:
+  - boya_pagoda
+  effects:
+    social_context: campus_daily_life
+- id: study_library
+  name: 图书馆自习
+  description: Study quietly, read notes, or prepare for class.
+  allowed_location_ids:
+  - library
+  effects:
+    social_context: campus_daily_life
+- id: borrow_book
+  name: 借还图书
+  description: Borrow, return, or search for a book.
+  allowed_location_ids:
+  - library
+  effects:
+    social_context: campus_daily_life
+- id: research_discussion
+  name: 科研讨论
+  description: Discuss papers, experiments, or a research question.
+  allowed_location_ids:
+  - library
+  - lab_building
+  effects:
+    social_context: campus_daily_life
+- id: attend_lecture
+  name: 参加讲座
+  description: Attend a lecture, forum, or talk.
+  allowed_location_ids:
+  - centennial_hall
+  effects:
+    social_context: campus_daily_life
+- id: public_talk
+  name: 公共报告
+  description: Give or listen to a public campus talk.
+  allowed_location_ids:
+  - centennial_hall
+  effects:
+    social_context: campus_daily_life
+- id: club_event
+  name: 社团活动
+  description: Coordinate a student club event.
+  allowed_location_ids:
+  - centennial_hall
+  - campus_green
+  effects:
+    social_context: campus_daily_life
+- id: attend_class
+  name: 上课
+  description: Attend or teach a scheduled class.
+  allowed_location_ids:
+  - teaching_building
+  effects:
+    social_context: campus_daily_life
+- id: office_hours
+  name: 答疑办公
+  description: Ask questions, tutor, or hold office hours.
+  allowed_location_ids:
+  - teaching_building
+  - admin_building
+  effects:
+    social_context: campus_daily_life
+- id: group_project
+  name: 小组作业
+  description: Work with classmates on a group task.
+  allowed_location_ids:
+  - teaching_building
+  effects:
+    social_context: campus_daily_life
+- id: rest_dorm
+  name: 宿舍休息
+  description: Rest, reset, or return to the dorm.
+  allowed_location_ids:
+  - dormitory
+  effects:
+    social_context: campus_daily_life
+- id: chat_roommates
+  name: 宿舍聊天
+  description: Talk with roommates about daily campus life.
+  allowed_location_ids:
+  - dormitory
+  effects:
+    social_context: campus_daily_life
+- id: prepare_day
+  name: 准备出门
+  description: Pack books, check schedule, and prepare for the next activity.
+  allowed_location_ids:
+  - dormitory
+  effects:
+    social_context: campus_daily_life
+- id: eat_canteen
+  name: 食堂用餐
+  description: Eat a meal in the student canteen.
+  allowed_location_ids:
+  - canteen
+  effects:
+    social_context: campus_daily_life
+- id: casual_meetup
+  name: 随意见面
+  description: Meet informally over food or a break.
+  allowed_location_ids:
+  - canteen
+  effects:
+    social_context: campus_daily_life
+- id: share_news
+  name: 交换消息
+  description: Share recent campus news or plans.
+  allowed_location_ids:
+  - canteen
+  effects:
+    social_context: campus_daily_life
+- id: exercise
+  name: 运动锻炼
+  description: Exercise indoors or on nearby sports grounds.
+  allowed_location_ids:
+  - gymnasium
+  effects:
+    social_context: campus_daily_life
+- id: team_practice
+  name: 团队训练
+  description: Coordinate sports practice or a team routine.
+  allowed_location_ids:
+  - gymnasium
+  effects:
+    social_context: campus_daily_life
+- id: wellness_check
+  name: 健康打卡
+  description: Check personal health and energy after exercise.
+  allowed_location_ids:
+  - gymnasium
+  effects:
+    social_context: campus_daily_life
+- id: run_experiment
+  name: 实验操作
+  description: Run a lab task or inspect experimental results.
+  allowed_location_ids:
+  - lab_building
+  effects:
+    social_context: campus_daily_life
+- id: lab_safety_check
+  name: 实验安全检查
+  description: Check equipment, lab safety, or experiment setup.
+  allowed_location_ids:
+  - lab_building
+  effects:
+    social_context: campus_daily_life
+- id: department_meeting
+  name: 院系会议
+  description: Attend an administrative or academic meeting.
+  allowed_location_ids:
+  - admin_building
+  effects:
+    social_context: campus_daily_life
+- id: paperwork
+  name: 事务办理
+  description: Handle paperwork, permissions, or coordination tasks.
+  allowed_location_ids:
+  - admin_building
+  effects:
+    social_context: campus_daily_life

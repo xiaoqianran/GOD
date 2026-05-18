@@ -36,12 +36,29 @@ ENV_DEFAULTS = {
     "GOD_LLM_API_BASE": "https://api.openai.com/v1",
     "GOD_LLM_MODEL": "gpt-5.4",
     "GOD_EMBEDDING_MODEL": "text-embedding-3-large",
-    "GOD_EXPERIMENT": "god_town",
-    "GOD_EXPERIMENT_RUN": "1",
-    "GOD_MAP_ID": DEFAULT_MAP_ID,
     "GOD_BACKEND_HOST": "127.0.0.1",
     "GOD_BACKEND_PORT": "8001",
     "GOD_FRONTEND_PORT": "5174",
+}
+
+DEFAULT_EXPERIMENT_KEY = "god_town"
+DEFAULT_EXPERIMENTS: dict[str, dict[str, str]] = {
+    "god_town": {
+        "key": "god_town",
+        "label": "GOD Town",
+        "description": "A normal weekday in The Ville.",
+        "hypothesis_id": "god_town",
+        "experiment_id": "1",
+        "map_id": DEFAULT_MAP_ID,
+    },
+    "pku_trump_visit": {
+        "key": "pku_trump_visit",
+        "label": "PKU Trump Visit",
+        "description": "A PKU campus visit and public-situation experiment.",
+        "hypothesis_id": "pku_trump_visit",
+        "experiment_id": "1",
+        "map_id": "pku",
+    },
 }
 
 MODEL_KEYS = (
@@ -178,6 +195,10 @@ class StartRequestPayload(BaseModel):
     workspace_path: str | None = None
 
 
+class StartDefaultRequest(BaseModel):
+    experiment_key: str = DEFAULT_EXPERIMENT_KEY
+
+
 def _god_root() -> Path:
     raw = os.getenv("GOD_ROOT")
     if raw:
@@ -257,6 +278,14 @@ def _write_env_values(values: dict[str, str]) -> None:
     path.write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
 
 
+def _write_model_env_values(values: dict[str, str]) -> None:
+    allowed = set(MODEL_KEYS)
+    filtered = {key: value for key, value in values.items() if key in allowed}
+    if not filtered:
+        return
+    _write_env_values(filtered)
+
+
 def _merged_env() -> dict[str, str]:
     env = dict(ENV_DEFAULTS)
     for key in MODEL_KEYS:
@@ -286,13 +315,25 @@ def _experiment_path(workspace: Path, hypothesis_id: str, experiment_id: str) ->
     return workspace / f"hypothesis_{hypothesis_id}" / f"experiment_{experiment_id}"
 
 
+def _default_experiment_status(workspace: Path) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for item in DEFAULT_EXPERIMENTS.values():
+        config_path = (
+            _experiment_path(workspace, item["hypothesis_id"], item["experiment_id"])
+            / "init"
+            / "init_config.json"
+        )
+        items.append({**item, "workspace_path": str(workspace), "config_exists": config_path.exists()})
+    return items
+
+
 def _map_service_root() -> Path | None:
     candidate = _god_root() / "agentsociety"
     return candidate if (candidate / "custom" / "maps").exists() else None
 
 
 def _load_map_package(map_id: str | None = None) -> MapPackage:
-    selected = str(map_id or _merged_env().get("GOD_MAP_ID") or DEFAULT_MAP_ID)
+    selected = str(map_id or DEFAULT_MAP_ID)
     try:
         return load_map_package(selected, _map_service_root())
     except Exception:
@@ -973,13 +1014,24 @@ async def _call_openai_compatible(
     return parsed
 
 
-def _write_current_experiment(hypothesis_id: str, experiment_id: str, workspace_path: Path) -> dict[str, Any]:
+def _write_current_experiment(
+    hypothesis_id: str,
+    experiment_id: str,
+    workspace_path: Path,
+    *,
+    map_id: str | None = None,
+    label: str | None = None,
+) -> dict[str, Any]:
     payload = {
         "hypothesis_id": hypothesis_id,
         "experiment_id": experiment_id,
         "workspace_path": str(workspace_path),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
+    if map_id:
+        payload["map_id"] = map_id
+    if label:
+        payload["label"] = label
     path = _current_experiment_file()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -995,6 +1047,33 @@ def _read_current_experiment() -> dict[str, Any] | None:
     except json.JSONDecodeError:
         return None
     return data if isinstance(data, dict) else None
+
+
+def _current_map_id(current: dict[str, Any] | None) -> str:
+    if not current:
+        return DEFAULT_MAP_ID
+    if current.get("map_id"):
+        return str(current["map_id"])
+    hypothesis_id = str(current.get("hypothesis_id") or "")
+    experiment_id = str(current.get("experiment_id") or "1")
+    for item in DEFAULT_EXPERIMENTS.values():
+        if item["hypothesis_id"] == hypothesis_id and item["experiment_id"] == experiment_id:
+            return str(item["map_id"])
+    workspace = Path(current.get("workspace_path") or _workspace_path()).expanduser().resolve()
+    config_path = _experiment_path(workspace, hypothesis_id, experiment_id) / "init" / "init_config.json"
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return DEFAULT_MAP_ID
+    env_modules = config.get("env_modules") if isinstance(config, dict) else None
+    if isinstance(env_modules, list):
+        for module in env_modules:
+            if not isinstance(module, dict):
+                continue
+            kwargs = module.get("kwargs")
+            if isinstance(kwargs, dict) and kwargs.get("map_id"):
+                return str(kwargs["map_id"])
+    return DEFAULT_MAP_ID
 
 
 def _write_start_request(hypothesis_id: str, experiment_id: str, workspace_path: Path) -> dict[str, Any]:
@@ -1026,20 +1105,14 @@ def _write_latest_draft(basics: DraftBasics, draft: dict[str, Any]) -> None:
 async def setup_status() -> dict[str, Any]:
     env = _merged_env()
     current = _read_current_experiment()
-    hypothesis_id = str((current or {}).get("hypothesis_id") or env.get("GOD_EXPERIMENT") or "")
-    experiment_id = str((current or {}).get("experiment_id") or env.get("GOD_EXPERIMENT_RUN") or "1")
+    hypothesis_id = str((current or {}).get("hypothesis_id") or "")
+    experiment_id = str((current or {}).get("experiment_id") or "1")
     workspace = Path((current or {}).get("workspace_path") or _workspace_path()).expanduser().resolve()
     config_path = _experiment_path(workspace, hypothesis_id, experiment_id) / "init" / "init_config.json"
     has_current = current is not None and config_path.exists()
-    default_hypothesis_id = ENV_DEFAULTS["GOD_EXPERIMENT"]
-    default_experiment_id = ENV_DEFAULTS["GOD_EXPERIMENT_RUN"]
     default_workspace = _workspace_path()
-    default_config_path = (
-        _experiment_path(default_workspace, default_hypothesis_id, default_experiment_id)
-        / "init"
-        / "init_config.json"
-    )
-    selected_map_id = str(env.get("GOD_MAP_ID") or DEFAULT_MAP_ID)
+    default_experiments = _default_experiment_status(default_workspace)
+    selected_map_id = _current_map_id(current)
     maps = [map_package_summary(package, _map_service_root()) for package in _available_map_packages()]
     if selected_map_id not in {item["map_id"] for item in maps}:
         selected_map_id = DEFAULT_MAP_ID
@@ -1053,12 +1126,11 @@ async def setup_status() -> dict[str, Any]:
         "model_config": {key: _redact_value(key, env.get(key)) for key in MODEL_KEYS},
         "current_experiment": current,
         "setup_mode": os.environ.get("GOD_SETUP_MODE") == "1",
-        "default_experiment": {
-            "hypothesis_id": default_hypothesis_id,
-            "experiment_id": default_experiment_id,
-            "workspace_path": str(default_workspace),
-            "config_exists": default_config_path.exists(),
-        },
+        "default_experiments": default_experiments,
+        "default_experiment": next(
+            (item for item in default_experiments if item["key"] == DEFAULT_EXPERIMENT_KEY),
+            None,
+        ),
         "needs_setup": not bool(env.get("GOD_LLM_API_KEY")) or not has_current,
     }
 
@@ -1074,7 +1146,7 @@ async def save_model_config(payload: ModelConfigPayload) -> dict[str, Any]:
         if key in MODEL_KEYS and key not in values:
             values[key] = _merged_env().get(key, default)
     if values:
-        _write_env_values(values)
+        _write_model_env_values(values)
     return await setup_status()
 
 
@@ -1118,7 +1190,7 @@ async def publish_experiment(request: PublishRequest) -> dict[str, Any]:
         title=str(draft_context.get("title") or "Custom GOD Experiment"),
         background=str(draft_context.get("background") or "Custom GOD experiment"),
         agent_count=max(1, len(request.draft.get("init_config", {}).get("agents", []) or [1])),
-        map_id=str(draft_env_kwargs.get("map_id") or draft_context.get("map_id") or _merged_env().get("GOD_MAP_ID") or DEFAULT_MAP_ID),
+        map_id=str(draft_env_kwargs.get("map_id") or draft_context.get("map_id") or DEFAULT_MAP_ID),
     )
     draft = _normalize_draft(request.draft, basics)
     workspace = _workspace_path()
@@ -1172,11 +1244,7 @@ async def publish_experiment(request: PublishRequest) -> dict[str, Any]:
         encoding="utf-8",
     )
 
-    env_values = {
-        "GOD_EXPERIMENT": hypothesis_id,
-        "GOD_EXPERIMENT_RUN": experiment_id,
-        "GOD_MAP_ID": draft["experiment_context"].get("map_id", DEFAULT_MAP_ID),
-    }
+    env_values: dict[str, str] = {}
     if request.llm_config:
         env_values.update(
             {
@@ -1185,8 +1253,14 @@ async def publish_experiment(request: PublishRequest) -> dict[str, Any]:
                 if value is not None and str(value).strip() != ""
             }
         )
-    _write_env_values(env_values)
-    current = _write_current_experiment(hypothesis_id, experiment_id, workspace)
+    _write_model_env_values(env_values)
+    current = _write_current_experiment(
+        hypothesis_id,
+        experiment_id,
+        workspace,
+        map_id=str(draft["experiment_context"].get("map_id", DEFAULT_MAP_ID)),
+        label=str(draft["experiment_context"].get("title") or hypothesis_id),
+    )
     start_request = (
         _write_start_request(hypothesis_id, experiment_id, workspace)
         if request.start_immediately
@@ -1206,8 +1280,8 @@ async def publish_experiment(request: PublishRequest) -> dict[str, Any]:
 @router.post("/start-request")
 async def create_start_request(payload: StartRequestPayload) -> dict[str, Any]:
     current = _read_current_experiment() or {}
-    hypothesis_id = payload.hypothesis_id or current.get("hypothesis_id") or _merged_env().get("GOD_EXPERIMENT")
-    experiment_id = payload.experiment_id or current.get("experiment_id") or _merged_env().get("GOD_EXPERIMENT_RUN") or "1"
+    hypothesis_id = payload.hypothesis_id or current.get("hypothesis_id")
+    experiment_id = payload.experiment_id or current.get("experiment_id") or "1"
     workspace = Path(payload.workspace_path or current.get("workspace_path") or _workspace_path()).expanduser().resolve()
     if not hypothesis_id:
         raise HTTPException(status_code=400, detail="No current experiment is configured")
@@ -1215,9 +1289,13 @@ async def create_start_request(payload: StartRequestPayload) -> dict[str, Any]:
 
 
 @router.post("/start-default")
-async def start_default_experiment() -> dict[str, Any]:
-    hypothesis_id = ENV_DEFAULTS["GOD_EXPERIMENT"]
-    experiment_id = ENV_DEFAULTS["GOD_EXPERIMENT_RUN"]
+async def start_default_experiment(request: StartDefaultRequest | None = None) -> dict[str, Any]:
+    experiment_key = (request.experiment_key if request else DEFAULT_EXPERIMENT_KEY) or DEFAULT_EXPERIMENT_KEY
+    default_experiment = DEFAULT_EXPERIMENTS.get(experiment_key)
+    if default_experiment is None:
+        raise HTTPException(status_code=404, detail=f"Unknown default experiment: {experiment_key}")
+    hypothesis_id = default_experiment["hypothesis_id"]
+    experiment_id = default_experiment["experiment_id"]
     workspace = _workspace_path()
     config_path = _experiment_path(workspace, hypothesis_id, experiment_id) / "init" / "init_config.json"
     if not config_path.exists():
@@ -1225,13 +1303,20 @@ async def start_default_experiment() -> dict[str, Any]:
             status_code=404,
             detail=f"Default experiment config not found: {config_path}",
         )
-    _write_env_values({"GOD_MAP_ID": DEFAULT_MAP_ID})
-    current = _write_current_experiment(hypothesis_id, experiment_id, workspace)
+    current = _write_current_experiment(
+        hypothesis_id,
+        experiment_id,
+        workspace,
+        map_id=default_experiment["map_id"],
+        label=default_experiment["label"],
+    )
     start_request = _write_start_request(hypothesis_id, experiment_id, workspace)
     return {
+        "experiment_key": experiment_key,
         "hypothesis_id": hypothesis_id,
         "experiment_id": experiment_id,
         "workspace_path": str(workspace),
+        "map_id": default_experiment["map_id"],
         "current_experiment": current,
         "start_request": start_request,
     }

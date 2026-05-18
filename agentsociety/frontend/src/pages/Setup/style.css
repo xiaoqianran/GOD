@@ -46,6 +46,24 @@
     min-height: 180px;
 }
 
+.setup-choice-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.setup-choice-panel {
+    min-height: 190px;
+    padding: 18px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.setup-choice-panel .ant-btn {
+    margin-top: auto;
+}
+
 .setup-confirm-grid {
     display: grid;
     grid-template-columns: 1fr 160px 1.4fr;
@@ -87,6 +105,7 @@
     }
 
     .setup-generate-panel,
+    .setup-choice-grid,
     .setup-confirm-grid {
         grid-template-columns: 1fr;
     }

@@ -9,10 +9,16 @@ BACKEND_ROOT="${BACKEND_ROOT:-$ROOT_DIR/agentsociety}"
 RUNTIME_ROOT="${RUNTIME_ROOT:-$ROOT_DIR/jiuwenclaw}"
 GOD_EXPERIMENT_WAS_EXPLICIT="${GOD_EXPERIMENT+x}"
 GOD_EXPERIMENT_RUN_WAS_EXPLICIT="${GOD_EXPERIMENT_RUN+x}"
+GOD_HYPOTHESIS_ID_WAS_EXPLICIT="${GOD_HYPOTHESIS_ID+x}"
+GOD_EXPERIMENT_ID_WAS_EXPLICIT="${GOD_EXPERIMENT_ID+x}"
 LIVE_WORKSPACE_PATH_WAS_EXPLICIT="${LIVE_WORKSPACE_PATH+x}"
+GOD_MAP_ID_WAS_EXPLICIT="${GOD_MAP_ID+x}"
 GOD_EXPERIMENT_EXPLICIT_VALUE="${GOD_EXPERIMENT:-}"
 GOD_EXPERIMENT_RUN_EXPLICIT_VALUE="${GOD_EXPERIMENT_RUN:-}"
+GOD_HYPOTHESIS_ID_EXPLICIT_VALUE="${GOD_HYPOTHESIS_ID:-}"
+GOD_EXPERIMENT_ID_EXPLICIT_VALUE="${GOD_EXPERIMENT_ID:-}"
 LIVE_WORKSPACE_PATH_EXPLICIT_VALUE="${LIVE_WORKSPACE_PATH:-}"
+GOD_MAP_ID_EXPLICIT_VALUE="${GOD_MAP_ID:-}"
 LIVE_WORKSPACE_PATH="${LIVE_WORKSPACE_PATH:-$BACKEND_ROOT/quick_experiments}"
 
 # State dirs.
@@ -129,10 +135,10 @@ for key, value in mapping.items():
 PY
   )"
   [[ -n "$exports" ]] || return 0
-  if [[ -n "$GOD_EXPERIMENT_WAS_EXPLICIT" ]]; then
+  if [[ -n "$GOD_EXPERIMENT_WAS_EXPLICIT" || -n "$GOD_HYPOTHESIS_ID_WAS_EXPLICIT" ]]; then
     exports="$(printf '%s\n' "$exports" | grep -v '^GOD_EXPERIMENT=' || true)"
   fi
-  if [[ -n "$GOD_EXPERIMENT_RUN_WAS_EXPLICIT" ]]; then
+  if [[ -n "$GOD_EXPERIMENT_RUN_WAS_EXPLICIT" || -n "$GOD_EXPERIMENT_ID_WAS_EXPLICIT" ]]; then
     exports="$(printf '%s\n' "$exports" | grep -v '^GOD_EXPERIMENT_RUN=' || true)"
   fi
   if [[ -n "$LIVE_WORKSPACE_PATH_WAS_EXPLICIT" ]]; then
@@ -152,12 +158,27 @@ load_env() {
   fi
   if [[ -n "$GOD_EXPERIMENT_WAS_EXPLICIT" ]]; then
     GOD_EXPERIMENT="$GOD_EXPERIMENT_EXPLICIT_VALUE"
+  elif [[ -n "$GOD_HYPOTHESIS_ID_WAS_EXPLICIT" ]]; then
+    GOD_EXPERIMENT="$GOD_HYPOTHESIS_ID_EXPLICIT_VALUE"
+  else
+    unset GOD_EXPERIMENT
+    unset GOD_HYPOTHESIS_ID
   fi
   if [[ -n "$GOD_EXPERIMENT_RUN_WAS_EXPLICIT" ]]; then
     GOD_EXPERIMENT_RUN="$GOD_EXPERIMENT_RUN_EXPLICIT_VALUE"
+  elif [[ -n "$GOD_EXPERIMENT_ID_WAS_EXPLICIT" ]]; then
+    GOD_EXPERIMENT_RUN="$GOD_EXPERIMENT_ID_EXPLICIT_VALUE"
+  else
+    unset GOD_EXPERIMENT_RUN
+    unset GOD_EXPERIMENT_ID
   fi
   if [[ -n "$LIVE_WORKSPACE_PATH_WAS_EXPLICIT" ]]; then
     LIVE_WORKSPACE_PATH="$LIVE_WORKSPACE_PATH_EXPLICIT_VALUE"
+  fi
+  if [[ -n "$GOD_MAP_ID_WAS_EXPLICIT" ]]; then
+    GOD_MAP_ID="$GOD_MAP_ID_EXPLICIT_VALUE"
+  else
+    unset GOD_MAP_ID
   fi
   export_internal_env
   load_current_experiment
@@ -461,12 +482,58 @@ open_setup_page() {
   printf 'Setup wizard:     %s\n' "$(setup_url)"
 }
 
+current_experiment_config_path() {
+  [[ -f "$CURRENT_EXPERIMENT_FILE" ]] || return 1
+  python3 - "$CURRENT_EXPERIMENT_FILE" "$LIVE_WORKSPACE_PATH" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+fallback_workspace = Path(sys.argv[2])
+try:
+    data = json.loads(path.read_text(encoding="utf-8"))
+except Exception:
+    raise SystemExit(1)
+if not isinstance(data, dict):
+    raise SystemExit(1)
+hypothesis_id = str(data.get("hypothesis_id") or "").strip()
+experiment_id = str(data.get("experiment_id") or "1").strip()
+if not hypothesis_id or not experiment_id:
+    raise SystemExit(1)
+workspace = Path(data.get("workspace_path") or fallback_workspace).expanduser()
+print(workspace / f"hypothesis_{hypothesis_id}" / f"experiment_{experiment_id}" / "init" / "init_config.json")
+PY
+}
+
+has_current_experiment_config() {
+  local config_path
+  config_path="$(current_experiment_config_path)" || return 1
+  [[ -f "$config_path" ]] || return 1
+}
+
+has_pending_start_request() {
+  [[ -f "$START_REQUEST_FILE" ]] || return 1
+  if [[ -f "$CURRENT_EXPERIMENT_FILE" && "$START_REQUEST_FILE" -ot "$CURRENT_EXPERIMENT_FILE" ]]; then
+    local stale_path="$START_REQUEST_FILE.stale.$(date +%Y%m%d_%H%M%S)"
+    log "Ignoring stale setup startup request: $START_REQUEST_FILE"
+    mv "$START_REQUEST_FILE" "$stale_path" 2>/dev/null || rm -f "$START_REQUEST_FILE"
+    return 1
+  fi
+  return 0
+}
+
 has_ready_start_config() {
   load_env
   [[ -n "${GOD_LLM_API_KEY:-}" ]] || return 1
-  [[ -f "$CURRENT_EXPERIMENT_FILE" ]] || return 1
-  local config_path="$LIVE_WORKSPACE_PATH/hypothesis_${GOD_EXPERIMENT}/experiment_${GOD_EXPERIMENT_RUN}/init/init_config.json"
-  [[ -f "$config_path" ]] || return 1
+  has_current_experiment_config
+}
+
+require_current_experiment_config() {
+  if has_current_experiment_config; then
+    return 0
+  fi
+  die "No current experiment is configured. Run ./scripts/god.sh start and choose an experiment in setup."
 }
 
 stop_control_services() {
@@ -812,6 +879,7 @@ prepare_experiment() {
   BACKEND_ROOT="$BACKEND_ROOT" \
   RUNTIME_AGENT_PORT="$RUNTIME_AGENT_PORT" \
   GOD_SESSION_PREFIX="$session_prefix" \
+  GOD_MAP_ID_WAS_EXPLICIT="$GOD_MAP_ID_WAS_EXPLICIT" \
   GOD_MAP_ID="${GOD_MAP_ID:-}" \
   python3 - "$config_path" <<'PY'
 import json
@@ -824,7 +892,11 @@ config = json.loads(path.read_text(encoding="utf-8"))
 agent_root = str(Path(os.environ["BACKEND_ROOT"]).resolve())
 ws_url = f"ws://127.0.0.1:{os.environ['RUNTIME_AGENT_PORT']}"
 session_prefix = os.environ["GOD_SESSION_PREFIX"]
-requested_map_id = os.environ.get("GOD_MAP_ID", "").strip()
+requested_map_id = (
+    os.environ.get("GOD_MAP_ID", "").strip()
+    if os.environ.get("GOD_MAP_ID_WAS_EXPLICIT")
+    else ""
+)
 
 for module in config.get("env_modules", []):
     if module.get("module_type") == "PixelTownSocialEnv":
@@ -947,23 +1019,13 @@ start_setup_services() {
   export GOD_SETUP_MODE=1
   ensure_env_file
   rm -f "$START_REQUEST_FILE"
-  stop_control_services
+  stop_all
   start_backend
   start_frontend
   open_setup_page
 }
 
-wait_for_start_request() {
-  log "Waiting for setup wizard to save and request startup"
-  local next_notice=$((SECONDS + 30))
-  while [[ ! -f "$START_REQUEST_FILE" ]]; do
-    sleep 2
-    if (( SECONDS >= next_notice )); then
-      log "Still waiting on $(setup_url)"
-      next_notice=$((SECONDS + 30))
-    fi
-  done
-
+consume_start_request() {
   local parsed hypothesis_id experiment_id workspace_path
   parsed="$(
     python3 - "$START_REQUEST_FILE" <<'PY'
@@ -997,9 +1059,30 @@ PY
   log "Received start request: $GOD_EXPERIMENT / experiment_$GOD_EXPERIMENT_RUN"
 }
 
+wait_for_start_request() {
+  log "Waiting for setup wizard to save and request startup"
+  local next_notice=$((SECONDS + 30))
+  while [[ ! -f "$START_REQUEST_FILE" ]]; do
+    sleep 2
+    if (( SECONDS >= next_notice )); then
+      log "Still waiting on $(setup_url)"
+      next_notice=$((SECONDS + 30))
+    fi
+  done
+  consume_start_request
+}
+
 start_with_setup_if_needed() {
   require_base_tools
   load_env
+  if has_pending_start_request; then
+    log "Applying pending setup startup request"
+    consume_start_request
+    unset GOD_SETUP_MODE
+    stop_all
+    start_all
+    return 0
+  fi
   if has_ready_start_config; then
     start_all
     return 0
@@ -1045,6 +1128,7 @@ create_session() {
 
 start_all() {
   load_env
+  require_current_experiment_config
   setup_deps
   ensure_env_file
   prepare_experiment
@@ -1064,9 +1148,11 @@ restart_all() {
 new_run() {
   require_base_tools
   load_env
+  require_current_experiment_config
   export GOD_SESSION_PREFIX="${GOD_EXPERIMENT}_fresh_$(date +%Y%m%d_%H%M%S)"
   stop_all
   local run_dir="$LIVE_WORKSPACE_PATH/hypothesis_${GOD_EXPERIMENT}/experiment_${GOD_EXPERIMENT_RUN}/run"
+  log "New run will clear: $run_dir"
   rm -rf "$run_dir"
   log "Cleared previous run"
   start_all
@@ -1095,6 +1181,13 @@ print_status() {
   printf '\nURLs\n'
   print_frontend_links
   printf 'Backend:          %s/health\n' "$backend_url"
+  printf '\nCurrent experiment\n'
+  if has_current_experiment_config; then
+    printf 'Experiment:     %s / experiment_%s\n' "$GOD_EXPERIMENT" "$GOD_EXPERIMENT_RUN"
+    printf 'Workspace:      %s\n' "$LIVE_WORKSPACE_PATH"
+  else
+    printf 'Experiment:     <not configured>\n'
+  fi
   printf '\nModel\n'
   printf 'API key:       %s\n' "$(configured_state "${GOD_LLM_API_KEY:-}")"
   printf 'API base:      %s\n' "${GOD_LLM_API_BASE:-<unset>}"
@@ -1107,6 +1200,11 @@ tail_logs() {
 }
 
 open_replay() {
+  load_env
+  if ! has_current_experiment_config; then
+    open_setup_page
+    return 0
+  fi
   if command_exists open; then
     open_frontend_pages
   else

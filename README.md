@@ -17,7 +17,7 @@
   <a href="#-highlights">Highlights</a> ·
   <a href="#-features">Features</a> ·
   <a href="#%EF%B8%8F-how-it-works">How it works</a> ·
-  <a href="#-default-experiment">Default Experiment</a> ·
+  <a href="#-built-in-experiments">Built-in Experiments</a> ·
   <a href="#%EF%B8%8F-roadmap">Roadmap</a> ·
   <a href="CONTRIBUTING.md">Contributing</a> ·
   <a href="README.zh-CN.md">🌏 中文</a>
@@ -76,15 +76,16 @@ That's it. On first run, the script installs everything, opens a **browser-based
 </p>
 
 
-<p align="center"><sub>The Setup Wizard — five guided steps from blank machine to a live society.</sub></p>
+<p align="center"><sub>The Setup Wizard — model config, experiment choice, and custom society creation from one browser flow.</sub></p>
 
 <table>
 <tr>
-  <td align="center" width="20%">🔌<br/><b>1. Model</b><br/><sub>Paste an OpenAI-compatible API key, base URL, and model name.</sub></td>
-  <td align="center" width="20%">🧪<br/><b>2. Scenario</b><br/><sub>Describe your world — date, weather, vibes, rules.</sub></td>
-  <td align="center" width="20%">🤖<br/><b>3. Generate</b><br/><sub>The GOD agent drafts agent profiles and a step plan.</sub></td>
-  <td align="center" width="20%">✏️<br/><b>4. Edit</b><br/><sub>Tweak personalities, relationships, locations, or steps.</sub></td>
-  <td align="center" width="20%">▶️<br/><b>5. Launch</b><br/><sub>Save as a new experiment copy and step into the control room.</sub></td>
+  <td align="center" width="16%">🔌<br/><b>1. Model</b><br/><sub>Paste an OpenAI-compatible API key, base URL, and model name.</sub></td>
+  <td align="center" width="16%">🧭<br/><b>2. Choose</b><br/><sub>Open GOD Town, open PKU Trump Visit, or create your own.</sub></td>
+  <td align="center" width="16%">🧪<br/><b>3. Scenario</b><br/><sub>Describe your world — date, weather, vibes, rules.</sub></td>
+  <td align="center" width="16%">🤖<br/><b>4. Generate</b><br/><sub>The GOD agent drafts agent profiles and a step plan.</sub></td>
+  <td align="center" width="16%">✏️<br/><b>5. Edit</b><br/><sub>Tweak personalities, relationships, locations, or steps.</sub></td>
+  <td align="center" width="16%">▶️<br/><b>6. Launch</b><br/><sub>Publish the experiment and step into the control room.</sub></td>
 </tr>
 </table>
 
@@ -106,7 +107,7 @@ Full walkthrough: **[Quickstart →](QUICKSTART.md)**
 | 🪄 | **No-code setup wizard** | Browser-based: configure model + scenario, let GOD generate agents and steps, edit, then launch. |
 | 🧼 | **One-command reset** | Wipe replay data and seed a clean society without leaving the terminal. |
 | 🗺️ | **Pixel town world** | A live tiled map: locations, actions, messages, statuses — every step replay-friendly. |
-| 🧱 | **Single config, hackable** | One `.env`, one script. No Docker. Edit, reload, ship. |
+| 🧱 | **Single current experiment** | `.env` stores local model/port settings; `.god/current_experiment.json` stores the one active experiment. |
 
 ## 🏗️ How It Works
 
@@ -148,23 +149,27 @@ GOD is intentionally local-first: the control room, backend, runtime bridge, exp
 
 ```bash
 ./scripts/god.sh start      # start the full stack (idempotent)
-./scripts/god.sh configure  # open the setup wizard for a new experiment copy
+./scripts/god.sh configure  # open setup to switch defaults or create an experiment
 ./scripts/god.sh restart    # stop everything cleanly, then start again
-./scripts/god.sh new-run    # wipe replay data and start a fresh session
+./scripts/god.sh new-run    # wipe the current experiment run and start fresh
 ./scripts/god.sh status     # ports, URLs, model status
 ./scripts/god.sh stop       # stop everything
 ./scripts/god.sh tail       # follow logs
 ./scripts/god.sh open       # open the frontend pages in the default browser
 ```
 
-## 🧪 Default Experiment
+## 🧪 Built-in Experiments
+
+GOD ships two built-in experiments and treats them exactly like experiments you publish yourself. The setup wizard writes the selected experiment to `.god/current_experiment.json`; `start`, `open`, and `new-run` then act only on that current experiment.
+
+`.env` is intentionally local-only and only stores model, API, port, and similar machine settings. It no longer decides the default experiment or map, so an old `GOD_MAP_ID=pku` cannot make GOD Town load the PKU map.
 
 
 ### 🏘️ An ordinary weekday in The Ville
 
 A late-spring Tuesday morning at 8:20. Sunny, 18°C, light breeze. A 200-person town with **10 residents who know each other but don't live in each other's pockets** — a slice-of-life simulation, not a quest script.
 
-➡️ **Tweak everything from the Setup Wizard, or drop your own config into `quick_experiments/` and point `GOD_EXPERIMENT` at it.**
+➡️ **Choose `god_town` in the Setup Wizard to make this the current experiment.** It is bound to `hypothesis_god_town/experiment_1` and the `the_ville` map.
 
 ➡️ See [`hypothesis_god_town/experiment_1/`](agentsociety/quick_experiments/hypothesis_god_town/experiment_1/README.md) for the full breakdown of locations, profiles, and interactions.
 
@@ -206,6 +211,14 @@ A late-spring Tuesday morning at 8:20. Sunny, 18°C, light breeze. A 200-person 
 
 <sub>Every resident carries a full profile: age, family, housing, economic status, health, daily routine, skills, needs, worries, secrets, social network, language style, quirks, short- & long-term goals.</sub>
 
+### 🏫 PKU Trump Visit
+
+A campus public-situation experiment on a stylized PKU map. Daily routines begin around gates, classrooms, library, lake, dining hall, dormitory, and Centennial Hall, then a high-attention visit event tests how residents notice, ask, gather, and react.
+
+➡️ **Choose `pku_trump_visit` in the Setup Wizard to make this the current experiment.** It is bound to `hypothesis_pku_trump_visit/experiment_1` and the `pku` map.
+
+➡️ See [`hypothesis_pku_trump_visit/experiment_1/`](agentsociety/quick_experiments/hypothesis_pku_trump_visit/experiment_1/README.md) for the full scenario, cast, operator notes, and replay data.
+
 ## 🗺️ Pluggable Map Packages
 
 GOD now discovers map packages automatically from `agentsociety/custom/maps/<map_id>/`. To add a map, copy [`agentsociety/custom/maps/_template/`](agentsociety/custom/maps/_template/), replace `map.yaml`, `visuals/map.json`, tileset PNGs, and optional `characters/` or `location_assets/`, then run:
@@ -215,16 +228,16 @@ cd agentsociety
 uv run python scripts/validate_map_package.py custom/maps/<map_id>
 ```
 
-The setup wizard will list valid packages without code changes. v1 supports Tiled JSON maps with PNG tilesets and a `Collisions` layer where `0` means walkable. A PKU campus map package is available as a separate download so the main repository stays lightweight; place it under `agentsociety/custom/maps/pku/` after downloading. See [docs/MAP_PACKAGES.md](docs/MAP_PACKAGES.md) for the full package contract.
+The setup wizard will list valid packages without code changes. v1 supports Tiled JSON maps with PNG tilesets and a `Collisions` layer where `0` means walkable. The PKU campus package now ships in the repository at `agentsociety/custom/maps/pku/`. See [docs/MAP_PACKAGES.md](docs/MAP_PACKAGES.md) for the full package contract.
 
 ## 🛣️ Roadmap
 
 ### ✅ Completed
 
 - [x] 🗺️ **Pluggable map packages** — drop a folder under `agentsociety/custom/maps/<map_id>/`, refresh the wizard, and a new world is selectable. Auto-discovered, validated, hot-swappable. See [`docs/MAP_PACKAGES.md`](docs/MAP_PACKAGES.md).
-- [x] 🏫 **PKU map package download** — the PKU campus map is provided as a separate downloadable package, kept out of git history to avoid bloating the repository.
-- [x] 🪄 **No-code setup wizard** — a 5-step browser flow that turns a blank machine into a live society, with no `.env` edits or command-line flags.
-- [x] 🧪 **Scripted experiments** — reproducible experiments ship as plain folders under `quick_experiments/<hypothesis>/<experiment>/`; point `GOD_EXPERIMENT` at one and run.
+- [x] 🏫 **PKU campus map** — the PKU map package is bundled as a first-class map alongside The Ville.
+- [x] 🪄 **No-code setup wizard** — a browser flow that turns a blank machine into a live society, with model setup, built-in experiment choice, and custom experiment publishing.
+- [x] 🧪 **Scripted experiments** — reproducible experiments ship as plain folders under `quick_experiments/<hypothesis>/<experiment>/`; choosing or publishing one makes it the current experiment.
 
 ### 🛣️ Not Yet Done
 

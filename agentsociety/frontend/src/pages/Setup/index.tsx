@@ -104,11 +104,25 @@ type SetupStatus = {
     } | null;
     setup_mode?: boolean;
     default_experiment?: {
+        key?: string;
+        label?: string;
+        description?: string;
+        map_id?: string;
         hypothesis_id?: string;
         experiment_id?: string;
         workspace_path?: string;
         config_exists?: boolean;
     };
+    default_experiments?: Array<{
+        key: string;
+        label: string;
+        description?: string;
+        map_id: string;
+        hypothesis_id: string;
+        experiment_id: string;
+        workspace_path: string;
+        config_exists: boolean;
+    }>;
     needs_setup: boolean;
     selected_map_id: string;
     maps: MapPackageSummary[];
@@ -302,7 +316,7 @@ export default function SetupPage() {
     const [savingModel, setSavingModel] = useState(false);
     const [generating, setGenerating] = useState(false);
     const [publishing, setPublishing] = useState(false);
-    const [startingDefault, setStartingDefault] = useState(false);
+    const [startingDefault, setStartingDefault] = useState<string | null>(null);
     const [launchPending, setLaunchPending] = useState<LaunchResult | null>(null);
     const [agentModalOpen, setAgentModalOpen] = useState(false);
     const [editingAgentId, setEditingAgentId] = useState<number | null>(null);
@@ -373,7 +387,7 @@ export default function SetupPage() {
     }, []);
 
     useEffect(() => {
-        if (currentStep === 1) {
+        if (currentStep === 2) {
             basicsForm.setFieldsValue(basicsValues);
         }
         // Only sync when entering the step; while typing, Form owns the live cursor state.
@@ -442,7 +456,7 @@ export default function SetupPage() {
     };
 
     const goToStep = async (targetStep: number) => {
-        if (currentStep === 1 && targetStep > 1) {
+        if (currentStep === 2 && targetStep > 2) {
             try {
                 await persistBasicsFromForm();
             } catch {
@@ -454,7 +468,7 @@ export default function SetupPage() {
 
     const generateDraft = async () => {
         const modelValues = await modelForm.validateFields();
-        const basicsPayload = currentStep === 1
+        const basicsPayload = currentStep === 2
             ? await persistBasicsFromForm()
             : basicsRef.current;
         setGenerating(true);
@@ -468,7 +482,7 @@ export default function SetupPage() {
                 }),
             });
             setDraft(payload);
-            setCurrentStep(3);
+            setCurrentStep(4);
             messageApi.success(copy('messages.draftGenerated'));
         } catch (error) {
             messageApi.error(copy('messages.generateDraftFailed', { error: errorText(error) }));
@@ -477,19 +491,20 @@ export default function SetupPage() {
         }
     };
 
-    const startDefaultExperiment = async () => {
+    const startDefaultExperiment = async (experimentKey: string) => {
         const modelValues = await modelForm.validateFields();
         if (!status?.model_config.GOD_LLM_API_KEY?.configured && !String(modelValues.GOD_LLM_API_KEY || '').trim()) {
             messageApi.error(copy('messages.apiKeyRequired'));
             return;
         }
-        setStartingDefault(true);
+        setStartingDefault(experimentKey);
         try {
             const nextStatus = await persistModelConfig(modelValues);
             setStatus(nextStatus);
             const result = await fetchJson<LaunchResult>('/api/v1/god/setup/start-default', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ experiment_key: experimentKey }),
             });
             const setupMode = Boolean(nextStatus.setup_mode || status?.setup_mode);
             messageApi.success(setupMode ? copy('messages.defaultQueued') : copy('messages.defaultStarted'));
@@ -497,7 +512,7 @@ export default function SetupPage() {
         } catch (error) {
             messageApi.error(copy('messages.defaultStartFailed', { error: errorText(error) }));
         } finally {
-            setStartingDefault(false);
+            setStartingDefault(null);
         }
     };
 
@@ -670,7 +685,7 @@ export default function SetupPage() {
             });
             const setupMode = Boolean(status?.setup_mode);
             messageApi.success(setupMode ? copy('messages.publishedQueued') : copy('messages.published'));
-            setCurrentStep(4);
+            setCurrentStep(5);
             completeLaunch(result, setupMode, 1000);
         } catch (error) {
             messageApi.error(copy('messages.publishFailed', { error: errorText(error) }));
@@ -812,24 +827,6 @@ export default function SetupPage() {
                     </Col>
                 </Row>
             </Form>
-            <Alert
-                type="success"
-                showIcon
-                message={copy('model.fastPathTitle')}
-                description={copy('model.fastPathDescription')}
-                action={(
-                    <Button
-                        type="primary"
-                        icon={<PlayCircleOutlined />}
-                        loading={startingDefault}
-                        disabled={status?.default_experiment?.config_exists === false}
-                        onClick={startDefaultExperiment}
-                    >
-                        {copy('model.runDefault')}
-                    </Button>
-                )}
-                style={{ marginBottom: 16 }}
-            />
             <Space wrap>
                 <Button icon={<SaveOutlined />} loading={savingModel} onClick={saveModelConfig}>
                     {copy('model.save')}
@@ -837,6 +834,66 @@ export default function SetupPage() {
                 <Tag>{status?.model_config.GOD_LLM_API_KEY?.configured ? copy('model.apiKeyConfigured') : copy('model.apiKeyMissing')}</Tag>
                 <Text type="secondary">{status?.env_file}</Text>
             </Space>
+        </Card>
+    );
+
+    const renderExperimentChoiceStep = () => (
+        <Card className="setup-card" title={<Space><ExperimentOutlined />{copy('choice.title')}</Space>}>
+            {launchPending && (
+                <Alert
+                    type="success"
+                    showIcon
+                    message={copy('launchPending.title')}
+                    description={(
+                        <Space direction="vertical" size={4}>
+                            <Text>{copy('launchPending.description')}</Text>
+                            <Text code>
+                                {launchPending.hypothesis_id} / experiment_{launchPending.experiment_id}
+                            </Text>
+                        </Space>
+                    )}
+                    style={{ marginBottom: 18 }}
+                />
+            )}
+            <Alert
+                type="info"
+                showIcon
+                message={copy('choice.notice')}
+                description={copy('choice.description')}
+                style={{ marginBottom: 18 }}
+            />
+            <div className="setup-choice-grid">
+                {(status?.default_experiments || []).map((item) => (
+                    <div className="setup-choice-panel" key={item.key}>
+                        <Space direction="vertical" size={10} style={{ width: '100%' }}>
+                            <Space wrap>
+                                <Title level={4} style={{ margin: 0 }}>{item.label}</Title>
+                                <Tag>{item.map_id}</Tag>
+                            </Space>
+                            <Text type="secondary">{item.description || `${item.hypothesis_id} / ${item.experiment_id}`}</Text>
+                            <Text code>{item.hypothesis_id} / experiment_{item.experiment_id}</Text>
+                            <Button
+                                type="primary"
+                                icon={<PlayCircleOutlined />}
+                                loading={startingDefault === item.key}
+                                disabled={!item.config_exists}
+                                onClick={() => startDefaultExperiment(item.key)}
+                            >
+                                {copy('choice.openDefault')}
+                            </Button>
+                        </Space>
+                    </div>
+                ))}
+                <div className="setup-choice-panel">
+                    <Space direction="vertical" size={10} style={{ width: '100%' }}>
+                        <Title level={4} style={{ margin: 0 }}>{copy('choice.customTitle')}</Title>
+                        <Text type="secondary">{copy('choice.customDescription')}</Text>
+                        <Button icon={<EditOutlined />} onClick={() => setCurrentStep(2)}>
+                            {copy('choice.createCustom')}
+                        </Button>
+                    </Space>
+                </div>
+            </div>
         </Card>
     );
 
@@ -966,13 +1023,13 @@ export default function SetupPage() {
                 />
             )}
             <Space>
-                <Button onClick={() => setCurrentStep(0)}>{copy('basics.back')}</Button>
+                <Button onClick={() => setCurrentStep(1)}>{copy('basics.back')}</Button>
                 <Button
                     type="primary"
                     onClick={async () => {
                         try {
                             await persistBasicsFromForm();
-                            setCurrentStep(2);
+                            setCurrentStep(3);
                         } catch {
                             // Ant Design has already marked the invalid fields.
                         }
@@ -1039,8 +1096,8 @@ export default function SetupPage() {
                 style={{ marginBottom: 16 }}
             />
             <Space>
-                <Button onClick={() => setCurrentStep(1)}>{copy('generate.back')}</Button>
-                <Button disabled={!draft} onClick={() => setCurrentStep(3)}>{copy('generate.viewDraft')}</Button>
+                <Button onClick={() => setCurrentStep(2)}>{copy('generate.back')}</Button>
+                <Button disabled={!draft} onClick={() => setCurrentStep(4)}>{copy('generate.viewDraft')}</Button>
             </Space>
         </Card>
     );
@@ -1156,8 +1213,8 @@ export default function SetupPage() {
                 />
                 <Divider />
                 <Space>
-                    <Button onClick={() => setCurrentStep(2)}>{copy('edit.backToGenerate')}</Button>
-                    <Button type="primary" onClick={() => setCurrentStep(4)}>{copy('edit.confirmLaunch')}</Button>
+                    <Button onClick={() => setCurrentStep(3)}>{copy('edit.backToGenerate')}</Button>
+                    <Button type="primary" onClick={() => setCurrentStep(5)}>{copy('edit.confirmLaunch')}</Button>
                 </Space>
             </Card>
         );
@@ -1189,7 +1246,7 @@ export default function SetupPage() {
                         style={{ marginBottom: 16 }}
                     />
                     <Space wrap>
-                        <Button onClick={() => setCurrentStep(3)}>{copy('confirm.keepEditing')}</Button>
+                        <Button onClick={() => setCurrentStep(4)}>{copy('confirm.keepEditing')}</Button>
                         <Button
                             type="primary"
                             icon={<PlayCircleOutlined />}
@@ -1208,6 +1265,7 @@ export default function SetupPage() {
 
     const stepItems = [
         { title: copy('steps.model'), icon: <ApiOutlined /> },
+        { title: copy('steps.choose'), icon: <PlayCircleOutlined /> },
         { title: copy('steps.params'), icon: <ExperimentOutlined /> },
         { title: copy('steps.generate'), icon: <RobotOutlined /> },
         { title: copy('steps.edit'), icon: <EditOutlined /> },
@@ -1216,6 +1274,7 @@ export default function SetupPage() {
 
     const content = [
         renderModelStep,
+        renderExperimentChoiceStep,
         renderBasicsStep,
         renderGenerateStep,
         renderEditStep,
@@ -1225,7 +1284,7 @@ export default function SetupPage() {
     return (
         <div className="setup-page">
             {messageContextHolder}
-            {currentStep !== 1 && <Form form={basicsForm} component={false} />}
+            {currentStep !== 2 && <Form form={basicsForm} component={false} />}
             <div className="setup-shell">
                 <div className="setup-header">
                     <div>
