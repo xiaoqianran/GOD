@@ -17,7 +17,7 @@
   <a href="#-亮点">亮点</a> ·
   <a href="#-核心能力">核心能力</a> ·
   <a href="#%EF%B8%8F-架构">架构</a> ·
-  <a href="#-默认实验">默认实验</a> ·
+  <a href="#-内置实验">内置实验</a> ·
   <a href="#%EF%B8%8F-roadmap">Roadmap</a> ·
   <a href="CONTRIBUTING.zh-CN.md">参与开发</a> ·
   <a href="README.md">🌏 English</a>
@@ -75,15 +75,16 @@ cd GOD
   <img src="docs/assets/screenshots/02-setup-wizard-zh.png" alt="GOD 实验配置向导" width="100%" />
 </p>
 
-<p align="center"><sub>实验配置向导 —— 五步从安装到一座活生生的小镇。</sub></p>
+<p align="center"><sub>实验配置向导 —— 模型配置、默认实验选择、自建实验发布都在同一个浏览器流程里。</sub></p>
 
 <table>
 <tr>
-  <td align="center" width="20%">🔌<br/><b>1. 模型</b><br/><sub>填入 OpenAI 兼容的 API key、base URL 和模型名。</sub></td>
-  <td align="center" width="20%">🧪<br/><b>2. 剧本</b><br/><sub>用自然语言描述世界：日期、天气、氛围、规则。</sub></td>
-  <td align="center" width="20%">🤖<br/><b>3. 生成</b><br/><sub>GOD agent 自动起草 agent profile 和 step 计划。</sub></td>
-  <td align="center" width="20%">✏️<br/><b>4. 编辑</b><br/><sub>调整人物性格、关系、地点、步骤。</sub></td>
-  <td align="center" width="20%">▶️<br/><b>5. 启动</b><br/><sub>保存为新实验副本，直接进入控制台。</sub></td>
+  <td align="center" width="16%">🔌<br/><b>1. 模型</b><br/><sub>填入 OpenAI 兼容的 API key、base URL 和模型名。</sub></td>
+  <td align="center" width="16%">🧭<br/><b>2. 选择</b><br/><sub>打开 GOD Town、打开 PKU Trump Visit，或新建实验。</sub></td>
+  <td align="center" width="16%">🧪<br/><b>3. 剧本</b><br/><sub>用自然语言描述世界：日期、天气、氛围、规则。</sub></td>
+  <td align="center" width="16%">🤖<br/><b>4. 生成</b><br/><sub>GOD agent 自动起草 agent profile 和 step 计划。</sub></td>
+  <td align="center" width="16%">✏️<br/><b>5. 编辑</b><br/><sub>调整人物性格、关系、地点、步骤。</sub></td>
+  <td align="center" width="16%">▶️<br/><b>6. 启动</b><br/><sub>发布为当前实验，直接进入控制台。</sub></td>
 </tr>
 </table>
 
@@ -105,7 +106,7 @@ http://127.0.0.1:5174/pixel-replay/god_town/1
 | 🪄 | **零代码配置向导** | 浏览器里配置模型 + 剧本，让 GOD 生成 Agent 和 step，编辑后启动。 |
 | 🧼 | **一键重开** | 一条命令清掉 replay 数据，孵化一座干净的小镇。 |
 | 🗺️ | **像素小镇世界** | 地点、动作、消息、状态都是结构化、replay 友好的。 |
-| 🧱 | **单一配置 · 可改** | 一个 `.env`、一个脚本，没有 Docker，改完就跑。 |
+| 🧱 | **唯一当前实验** | `.env` 只保存模型、API、端口等本机配置；`.god/current_experiment.json` 保存唯一 active 实验。 |
 
 ## 🏗️ 架构
 
@@ -147,23 +148,27 @@ GOD 是 local-first：控制台、后端、runtime bridge、实验文件和 repl
 
 ```bash
 ./scripts/god.sh start      # 启动完整栈（可重复执行）
-./scripts/god.sh configure  # 打开配置向导，创建新的实验副本
+./scripts/god.sh configure  # 打开配置向导，切换默认实验或新建实验
 ./scripts/god.sh restart    # 先干净停止，再重新启动
-./scripts/god.sh new-run    # 清掉 replay 数据，开一个新的 session
+./scripts/god.sh new-run    # 清空当前实验 run，并开一个新的 session
 ./scripts/god.sh status     # 查看端口、URL、模型状态
 ./scripts/god.sh stop       # 停止所有服务
 ./scripts/god.sh tail       # 跟随日志
 ./scripts/god.sh open       # 在浏览器里打开前端页面
 ```
 
-## 🧪 默认实验
+## 🧪 内置实验
+
+GOD 现在内置两个默认实验，并且和你自己发布的实验使用同一套 current model。配置向导会把你选择的实验写到 `.god/current_experiment.json`；之后 `start`、`open`、`new-run` 都只作用于这个当前实验。
+
+`.env` 只保存本机模型、API、端口等配置，不再决定默认实验或地图。因此即使旧 `.env` 里残留 `GOD_MAP_ID=pku`，选择 GOD Town 时仍然会使用 `the_ville` 地图，不会串台。
 
 
 ### 🏘️ The Ville 的一个普通工作日
 
 晚春的工作日清晨 8:20，晴朗微风，气温 18°C。一座 200 多人的小镇，**10 位常住居民彼此熟识但保持距离** —— 一段反映自然节奏的日常切片，不是任务驱动的剧本。
 
-➡️ **想改任何细节？打开配置向导，或把新 config 丢到 `quick_experiments/` 让 `GOD_EXPERIMENT` 指过去就行。**
+➡️ **在配置向导选择 `god_town` 即可把它设为当前实验。** 它固定绑定 `hypothesis_god_town/experiment_1` 和 `the_ville` 地图。
 
 ➡️ 完整的地点 / 居民 / 交互拆解见 [`hypothesis_god_town/experiment_1/`](agentsociety/quick_experiments/hypothesis_god_town/experiment_1/README.md)。
 
@@ -205,6 +210,14 @@ GOD 是 local-first：控制台、后端、runtime bridge、实验文件和 repl
 
 <sub>每位居民都有完整 profile：年龄、家庭、住房、经济状况、健康、日常作息、技能、需求、担忧、秘密、社交圈、语言风格、小怪癖、短期/长期目标。</sub>
 
+### 🏫 PKU Trump Visit
+
+这是一个发生在风格化北大校园地图上的公共事件实验。Agent 会先在校门、教学楼、图书馆、未名湖、食堂、宿舍、百周年纪念讲堂等地点开始日常行动，然后在一次高关注访问事件中表现出注意、询问、聚集和讨论。
+
+➡️ **在配置向导选择 `pku_trump_visit` 即可把它设为当前实验。** 它固定绑定 `hypothesis_pku_trump_visit/experiment_1` 和 `pku` 地图。
+
+➡️ 完整场景、角色、操作脚本和 replay 数据见 [`hypothesis_pku_trump_visit/experiment_1/`](agentsociety/quick_experiments/hypothesis_pku_trump_visit/experiment_1/README.md)。
+
 ## 🗺️ 可拔插地图包
 
 GOD 会自动从 `agentsociety/custom/maps/<map_id>/` 发现地图包。想加一张新地图？复制 [`agentsociety/custom/maps/_template/`](agentsociety/custom/maps/_template/README.zh-CN.md)，替换 `map.yaml`、`visuals/map.json`、tileset PNG，以及可选的 `characters/` 和 `location_assets/`，然后跑：
@@ -214,16 +227,16 @@ cd agentsociety
 uv run python scripts/validate_map_package.py custom/maps/<map_id>
 ```
 
-配置向导会自动列出所有合法的地图包，完全不用改代码。v1 支持带 PNG tileset 的 Tiled JSON 地图，并要求一个 `Collisions` 层（`0` 表示可走）。PKU 校园地图包已作为独立下载提供，下载后放到 `agentsociety/custom/maps/pku/` 即可使用，这样主仓不会被大地图素材撑大。完整契约见 [docs/MAP_PACKAGES.zh-CN.md](docs/MAP_PACKAGES.zh-CN.md)。
+配置向导会自动列出所有合法的地图包，完全不用改代码。v1 支持带 PNG tileset 的 Tiled JSON 地图，并要求一个 `Collisions` 层（`0` 表示可走）。PKU 校园地图包现在已经随仓库发布，路径是 `agentsociety/custom/maps/pku/`。完整契约见 [docs/MAP_PACKAGES.zh-CN.md](docs/MAP_PACKAGES.zh-CN.md)。
 
 ## 🛣️ Roadmap
 
 ### ✅ 已完成
 
 - [x] 🗺️ **可拔插地图包** —— 把一个文件夹丢到 `agentsociety/custom/maps/<map_id>/`，刷新向导即出现新世界。自动发现、自动校验、热插拔。详见 [`docs/MAP_PACKAGES.zh-CN.md`](docs/MAP_PACKAGES.zh-CN.md)。
-- [x] 🏫 **PKU 地图包下载** —— PKU 校园地图已作为独立下载包提供，不放进 git 历史，避免撑大主仓。
-- [x] 🪄 **零代码配置向导** —— 五步浏览器流程：一台空机器到活生生的小镇。不用改 `.env`，不用命令行参数。
-- [x] 🧪 **可复现实验** —— 实验以普通文件夹形式发布，位于 `quick_experiments/<hypothesis>/<experiment>/`。把 `GOD_EXPERIMENT` 指过去就能跑。
+- [x] 🏫 **PKU 校园地图** —— PKU 地图包已经作为一等地图随仓库发布，和 The Ville 一起可选。
+- [x] 🪄 **零代码配置向导** —— 浏览器流程：模型配置、内置实验选择、自建实验发布，一台空机器到活生生的小镇。
+- [x] 🧪 **可复现实验** —— 实验以普通文件夹形式发布，位于 `quick_experiments/<hypothesis>/<experiment>/`。选择或发布一个实验后，它就会成为 current。
 
 ### 🛣️ 未完成 / 进行中
 

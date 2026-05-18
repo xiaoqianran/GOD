@@ -22,7 +22,6 @@ build/
 coverage/
 test-results/
 promos/
-agentsociety/custom/maps/pku/
 
 # Runtime data
 *.log
@@ -44,13 +43,18 @@ agentsociety/quick_experiments/hypothesis_*/
 !agentsociety/quick_experiments/hypothesis_god_town/**
 !agentsociety/quick_experiments/hypothesis_pku_trump_visit/
 !agentsociety/quick_experiments/hypothesis_pku_trump_visit/**
-agentsociety/quick_experiments/hypothesis_god_town/**/run/
+!agentsociety/quick_experiments/hypothesis_god_town/experiment_1/run/
+!agentsociety/quick_experiments/hypothesis_god_town/experiment_1/run/**
+!agentsociety/quick_experiments/hypothesis_pku_trump_visit/experiment_1/run/
+!agentsociety/quick_experiments/hypothesis_pku_trump_visit/experiment_1/run/**
+**/.DS_Store
 agentsociety/quick_experiments/hypothesis_god_town/**/run_*/
 agentsociety/quick_experiments/hypothesis_god_town/**/run_failed*/
 agentsociety/quick_experiments/hypothesis_god_town/**/run_stuck*/
 agentsociety/quick_experiments/hypothesis_god_town/**/run_launcher.log
-agentsociety/quick_experiments/hypothesis_pku_trump_visit/**/run/
 agentsociety/quick_experiments/hypothesis_pku_trump_visit/**/run_*/
 agentsociety/quick_experiments/hypothesis_pku_trump_visit/**/run_failed*/
 agentsociety/quick_experiments/hypothesis_pku_trump_visit/**/run_stuck*/
 agentsociety/quick_experiments/hypothesis_pku_trump_visit/**/run_launcher.log
+agentsociety/quick_experiments/hypothesis_god_town/experiment_1/run/**/*.log
+agentsociety/quick_experiments/hypothesis_pku_trump_visit/experiment_1/run/**/*.log

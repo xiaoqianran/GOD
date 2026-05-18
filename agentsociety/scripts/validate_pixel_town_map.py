@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Validate a PixelTownSocialEnv manifest against original The Ville semantics."""
+"""Validate a PixelTownSocialEnv manifest.
+
+For the canonical ``the_ville`` map, this also checks compatibility with the
+original Generative Agents matrix semantics.
+"""
 
 from __future__ import annotations
 
@@ -178,6 +182,8 @@ def validate_manifest(manifest_path: Path, matrix_root: Path | None = None) -> l
     manifest = _load(manifest_path)
     errors: list[str] = []
     warnings: list[str] = []
+    map_id = str(manifest.get("map_id") or manifest_path.parent.name)
+    is_the_ville = map_id == "the_ville"
 
     tiled_map_path = _resolve(manifest_path.parent, str(manifest.get("tiled_map_path") or "map.json"))
     if not tiled_map_path.exists():
@@ -185,9 +191,11 @@ def validate_manifest(manifest_path: Path, matrix_root: Path | None = None) -> l
     tiled_map = _load(tiled_map_path)
     width = int(tiled_map.get("width") or 0)
     height = int(tiled_map.get("height") or 0)
-    if (width, height) != (140, 100):
+    if width <= 0 or height <= 0:
+        errors.append(f"map must have positive width and height, got {width}x{height}")
+    if is_the_ville and (width, height) != (140, 100):
         errors.append(f"expected original The Ville map size 140x100, got {width}x{height}")
-    if tiled_map_path.name != "the_ville_jan7.json":
+    if is_the_ville and tiled_map_path.name != "the_ville_jan7.json":
         errors.append(f"manifest should reference original map file the_ville_jan7.json, got {tiled_map_path.name}")
 
     walkable = _walkable_tiles(tiled_map)
@@ -198,14 +206,14 @@ def validate_manifest(manifest_path: Path, matrix_root: Path | None = None) -> l
         image_path = _resolve(tileset_parent, str(tileset["image"]))
         if not image_path.exists():
             errors.append(f"tileset[{index}] image missing: {image_path}")
-        if "community_life" in image_path.name:
+        if is_the_ville and "community_life" in image_path.name:
             errors.append(f"generated AgentSociety tileset must not be used: {image_path}")
 
     matrix: OriginalVilleMatrix | None = None
     resolved_matrix_root = matrix_root or DEFAULT_GENERATIVE_MATRIX_ROOT
-    if resolved_matrix_root.exists():
+    if is_the_ville and resolved_matrix_root.exists():
         matrix = OriginalVilleMatrix(resolved_matrix_root)
-    else:
+    elif is_the_ville:
         warnings.append(f"original generative_agents matrix not found; skipped semantic-source validation: {resolved_matrix_root}")
 
     locations = manifest.get("locations") or []
@@ -229,7 +237,7 @@ def validate_manifest(manifest_path: Path, matrix_root: Path | None = None) -> l
         if location_id in location_ids:
             errors.append(f"duplicate location id: {location_id}")
         location_ids.add(location_id)
-        if location_id in REMOVED_GENERATED_LOCATIONS:
+        if is_the_ville and location_id in REMOVED_GENERATED_LOCATIONS:
             errors.append(f"generated or unsupported location should be removed: {location_id}")
 
         anchor = item.get("anchor_tile") or {}
@@ -252,7 +260,7 @@ def validate_manifest(manifest_path: Path, matrix_root: Path | None = None) -> l
             errors.append(f"location {location_id} anchor not inside bounds: ({x}, {y})")
 
         source_address = str(item.get("source_address") or "").strip()
-        if not source_address:
+        if is_the_ville and not source_address:
             errors.append(f"location {location_id} missing source_address")
         elif matrix is not None:
             semantic_bounds = matrix.semantic_bbox(source_address)
@@ -273,7 +281,7 @@ def validate_manifest(manifest_path: Path, matrix_root: Path | None = None) -> l
                     )
 
     missing = REQUIRED_ORIGINAL_LOCATIONS - location_ids
-    if missing:
+    if is_the_ville and missing:
         errors.append(f"missing original The Ville locations: {', '.join(sorted(missing))}")
 
     interaction_ids: set[str] = set()

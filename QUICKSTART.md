@@ -48,18 +48,19 @@ On first run, GOD will:
 2. Install Python + Node dependencies.
 3. Start the setup backend/control room.
 4. Open the browser setup wizard at `/setup`.
-5. Wait for you to save model settings and choose a launch path.
-6. Bring up the full stack, create a live session, run the first step, and open the control room.
+5. Wait for you to save model settings and choose an experiment.
+6. Bring up the full stack for that current experiment, create a live session, run the first step, and open the control room.
 
 <p align="center">
   <img src="docs/assets/screenshots/02-setup-wizard-en.png" alt="GOD setup wizard" width="100%" />
 </p>
 
 
-In the wizard you can choose either path:
+In the wizard you can choose one of three paths:
 
-- **Save Model and Run Default** launches the built-in GOD Town baseline immediately.
-- **Save and Configure Params** lets you describe a scenario, generate an editable experiment draft, adjust agents/steps, and then click **Save and Launch**.
+- **Open GOD Town** launches the built-in The Ville baseline.
+- **Open PKU Trump Visit** launches the built-in PKU campus experiment.
+- **Create Custom Experiment** lets you describe a scenario, generate an editable experiment draft, adjust agents/steps, and then click **Save and Launch**.
 
 Three settings are required:
 
@@ -69,9 +70,9 @@ Three settings are required:
 | `GOD_LLM_API_BASE` | `https://api.openai.com/v1` |
 | `GOD_LLM_MODEL` | `gpt-5.4` |
 
-Any OpenAI-compatible endpoint works. The API key is saved only in local `.env`; the browser only receives redacted status.
+Any OpenAI-compatible endpoint works. The API key is saved only in local `.env`; the browser only receives redacted status. Experiment selection is saved separately in `.god/current_experiment.json`, so `.env` does not control which map or experiment starts.
 
-To create another experiment later, run:
+To switch between built-in experiments or create another experiment later, run:
 
 ```bash
 ./scripts/god.sh configure
@@ -79,7 +80,7 @@ To create another experiment later, run:
 
 ## 4. Open the control room
 
-When startup finishes, the script opens the control room and prints a URL like:
+When startup finishes, the script opens the control room for the current experiment and prints a URL like:
 
 ```text
 http://127.0.0.1:5174/pixel-replay/god_town/1
@@ -109,16 +110,16 @@ Use `new-run` when the UI shows old replay data or you want a fresh live session
 ./scripts/god.sh new-run
 ```
 
-`new-run` stops services, wipes the previous replay/run state, and starts a clean live session.
+`new-run` prints the current experiment run directory, stops services, wipes only that current run state, and starts a clean live session.
 
 ## 7. Day-to-day commands
 
 ```bash
 ./scripts/god.sh start     # idempotent; reuses running services
 ./scripts/god.sh setup     # install/check dependencies only
-./scripts/god.sh configure # create a new experiment through the setup wizard
+./scripts/god.sh configure # switch built-in experiments or create a custom one
 ./scripts/god.sh restart   # stop everything cleanly, then start again
-./scripts/god.sh new-run   # wipe replay data and start a fresh session
+./scripts/god.sh new-run   # wipe the current experiment run and start fresh
 ./scripts/god.sh status    # print URLs, ports, and model status
 ./scripts/god.sh stop      # stop everything
 ./scripts/god.sh tail      # follow logs

@@ -12,6 +12,7 @@ from agentsociety2.backend.routers.god_setup import (
     GenerateDraftRequest,
     ModelConfigPayload,
     PublishRequest,
+    StartDefaultRequest,
 )
 
 
@@ -183,7 +184,7 @@ def test_setup_status_scans_map_packages_and_keeps_invalid_visible(monkeypatch, 
     status = anyio.run(god_setup.setup_status)
 
     by_id = {item["map_id"]: item for item in status["maps"]}
-    assert status["selected_map_id"] == "lab_map"
+    assert status["selected_map_id"] == "the_ville"
     assert by_id["lab_map"]["validation_status"]["ok"] is True
     assert by_id["broken_map"]["validation_status"]["ok"] is False
     assert status["map_locations"][0]["id"] == "lab"
@@ -444,8 +445,9 @@ def test_publish_writes_new_experiment_context_and_start_request(monkeypatch, tm
     assert context["title"] == "Stanford Prison Adaptation"
     assert init_config["agents"][0]["kwargs"]["experiment_context"]["title"] == context["title"]
     assert current["hypothesis_id"] == "role_study"
+    assert current["map_id"] == "the_ville"
     assert start_request["hypothesis_id"] == "role_study"
-    assert "GOD_EXPERIMENT=role_study" in (tmp_path / ".env").read_text(encoding="utf-8")
+    assert "GOD_EXPERIMENT=role_study" not in (tmp_path / ".env").read_text(encoding="utf-8")
 
 
 def test_start_default_experiment_writes_current_and_start_request(monkeypatch, tmp_path):
@@ -461,4 +463,25 @@ def test_start_default_experiment_writes_current_and_start_request(monkeypatch, 
     current = json.loads((tmp_path / ".god" / "current_experiment.json").read_text(encoding="utf-8"))
     start_request = json.loads((tmp_path / ".god" / "run" / "start-request.json").read_text(encoding="utf-8"))
     assert current["hypothesis_id"] == "god_town"
+    assert current["map_id"] == "the_ville"
     assert start_request["hypothesis_id"] == "god_town"
+
+
+def test_start_default_experiment_can_select_pku_without_writing_env_map(monkeypatch, tmp_path):
+    _configure_tmp_god(monkeypatch, tmp_path)
+    (tmp_path / ".env").write_text("GOD_MAP_ID=the_ville\n", encoding="utf-8")
+    default_dir = tmp_path / "quick_experiments" / "hypothesis_pku_trump_visit" / "experiment_1" / "init"
+    default_dir.mkdir(parents=True)
+    (default_dir / "init_config.json").write_text("{}", encoding="utf-8")
+
+    result = anyio.run(
+        god_setup.start_default_experiment,
+        StartDefaultRequest(experiment_key="pku_trump_visit"),
+    )
+
+    assert result["hypothesis_id"] == "pku_trump_visit"
+    assert result["map_id"] == "pku"
+    current = json.loads((tmp_path / ".god" / "current_experiment.json").read_text(encoding="utf-8"))
+    assert current["hypothesis_id"] == "pku_trump_visit"
+    assert current["map_id"] == "pku"
+    assert "GOD_MAP_ID=pku" not in (tmp_path / ".env").read_text(encoding="utf-8")
