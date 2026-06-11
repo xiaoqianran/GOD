@@ -77,7 +77,7 @@ def _wait_for_agent_server(
     *,
     host: str,
     port: int,
-    timeout: float = 30.0,
+    timeout: float = 180.0,
 ) -> None:
     deadline = time.monotonic() + timeout
     last_error: OSError | None = None
@@ -95,6 +95,20 @@ def _wait_for_agent_server(
             time.sleep(0.1)
     detail = f": {last_error}" if last_error else ""
     raise RuntimeError(f"AgentServer did not become ready on {host}:{port} within {timeout:.0f}s{detail}.")
+
+
+def _agent_server_startup_timeout() -> float:
+    raw = os.getenv("JIUWENCLAW_AGENT_SERVER_STARTUP_TIMEOUT") or os.getenv(
+        "AGENT_SERVER_STARTUP_TIMEOUT",
+        "180",
+    )
+    try:
+        timeout = float(raw)
+    except ValueError as exc:
+        raise RuntimeError(f"Invalid JIUWENCLAW_AGENT_SERVER_STARTUP_TIMEOUT: {raw}") from exc
+    if timeout <= 0:
+        raise RuntimeError(f"Invalid JIUWENCLAW_AGENT_SERVER_STARTUP_TIMEOUT: {raw}")
+    return timeout
 
 
 def main() -> None:
@@ -138,7 +152,12 @@ def main() -> None:
     gateway = None
     try:
         host, port = _agent_server_endpoint()
-        _wait_for_agent_server(agent, host=host, port=port)
+        _wait_for_agent_server(
+            agent,
+            host=host,
+            port=port,
+            timeout=_agent_server_startup_timeout(),
+        )
         gateway = subprocess.Popen(gateway_cmd)
     except Exception as exc:
         _terminate_process(agent)

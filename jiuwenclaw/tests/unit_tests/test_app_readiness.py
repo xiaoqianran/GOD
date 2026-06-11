@@ -67,3 +67,26 @@ def test_agent_server_endpoint_reads_runtime_env(monkeypatch, tmp_path):
     monkeypatch.setenv("AGENT_SERVER_PORT", "19092")
 
     assert app._agent_server_endpoint() == ("127.0.0.1", 19092)
+
+
+def test_agent_server_startup_timeout_defaults_to_release_startup_window(monkeypatch, tmp_path):
+    app = _load_app_module(monkeypatch, tmp_path)
+    monkeypatch.delenv("JIUWENCLAW_AGENT_SERVER_STARTUP_TIMEOUT", raising=False)
+    monkeypatch.delenv("AGENT_SERVER_STARTUP_TIMEOUT", raising=False)
+
+    assert app._agent_server_startup_timeout() == 180.0
+
+
+def test_agent_server_startup_timeout_reads_env_override(monkeypatch, tmp_path):
+    app = _load_app_module(monkeypatch, tmp_path)
+    monkeypatch.setenv("JIUWENCLAW_AGENT_SERVER_STARTUP_TIMEOUT", "240")
+
+    assert app._agent_server_startup_timeout() == 240.0
+
+
+def test_agent_server_startup_timeout_rejects_invalid_env(monkeypatch, tmp_path):
+    app = _load_app_module(monkeypatch, tmp_path)
+    monkeypatch.setenv("JIUWENCLAW_AGENT_SERVER_STARTUP_TIMEOUT", "0")
+
+    with pytest.raises(RuntimeError, match="Invalid JIUWENCLAW_AGENT_SERVER_STARTUP_TIMEOUT"):
+        app._agent_server_startup_timeout()
