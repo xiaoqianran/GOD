@@ -175,7 +175,21 @@ def test_map_studio_draft_patch_publish_and_setup_visibility(monkeypatch, tmp_pa
     )
 
     assert published.map_id == "moon_tower"
+    assert published.requested_map_id == "moon_tower"
+    assert published.renamed is False
     assert Path(published.package_path).name == "moon_tower"
+
+    renamed = anyio.run(
+        map_studio.publish_draft,
+        created.draft_id,
+        PublishDraftRequest(map_id="moon_tower"),
+    )
+
+    assert renamed.map_id == "moon_tower_2"
+    assert renamed.requested_map_id == "moon_tower"
+    assert renamed.renamed is True
+    assert Path(renamed.package_path).name == "moon_tower_2"
+
     status = anyio.run(god_setup.setup_status)
     by_id = {item["map_id"]: item for item in status["maps"]}
     assert by_id["moon_tower"]["validation_status"]["ok"] is True

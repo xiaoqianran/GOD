@@ -87,6 +87,8 @@ class MapDraftResponse(BaseModel):
 
 class PublishDraftResponse(BaseModel):
     map_id: str
+    requested_map_id: str
+    renamed: bool = False
     package_path: str
     manifest_path: str
     validation: MapValidationStatus
