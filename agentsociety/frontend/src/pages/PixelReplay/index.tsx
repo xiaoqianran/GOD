@@ -515,7 +515,15 @@ function getAgentOptionLabel(profile: AgentProfile): string {
     return `${getAgentName(profile)} · #${profile.id}`;
 }
 
-function describeTargetSubject(target: AskTarget, profiles: AgentProfile[], t: TFunction): string {
+function localeListSeparator(language: string): string {
+    return language.startsWith('en') ? '; ' : '，';
+}
+
+function localeInlineSeparator(language: string): string {
+    return language.startsWith('en') ? ', ' : '，';
+}
+
+function describeTargetSubject(target: AskTarget, profiles: AgentProfile[], t: TFunction, language: string): string {
     const byId = new Map(profiles.map((profile) => [profile.id, profile]));
     if (target.type === 'society') {
         return t('replay.pixel.target.system');
@@ -534,7 +542,7 @@ function describeTargetSubject(target: AskTarget, profiles: AgentProfile[], t: T
             const profile = byId.get(id);
             return profile ? getAgentOptionLabel(profile) : t('replay.pixel.target.agentFallback', { id });
         })
-        .join('，');
+        .join(localeListSeparator(language));
 }
 
 function describeInteractionTarget(
@@ -542,8 +550,9 @@ function describeInteractionTarget(
     profiles: AgentProfile[],
     mode: 'ask' | 'intervene',
     t: TFunction,
+    language: string,
 ): string {
-    const targetLabel = describeTargetSubject(target, profiles, t);
+    const targetLabel = describeTargetSubject(target, profiles, t, language);
     return t(`replay.pixel.target.${mode}`, { target: targetLabel });
 }
 
@@ -864,15 +873,16 @@ function formatRuntimeInlineFields(
         .join('\n');
 }
 
-function formatTokenUsage(tokenUsage: Record<string, TokenUsage> | undefined, t: TFunction): string {
+function formatTokenUsage(tokenUsage: Record<string, TokenUsage> | undefined, t: TFunction, language: string): string {
     if (!tokenUsage || Object.keys(tokenUsage).length === 0) {
         return t('replay.pixel.drawer.tokenEmpty');
     }
+    const fieldSeparator = localeInlineSeparator(language);
     return Object.entries(tokenUsage)
         .map(([model, usage]) => (
-            `${model}: ${t('replay.pixel.drawer.tokenCall')} ${usage.call_count}，${t('replay.pixel.drawer.tokenInput')} ${usage.input_tokens}，${t('replay.pixel.drawer.tokenOutput')} ${usage.output_tokens}，${t('replay.pixel.drawer.tokenTotal')} ${usage.input_tokens + usage.output_tokens}`
+            `${model}: ${t('replay.pixel.drawer.tokenCall')} ${usage.call_count}${fieldSeparator}${t('replay.pixel.drawer.tokenInput')} ${usage.input_tokens}${fieldSeparator}${t('replay.pixel.drawer.tokenOutput')} ${usage.output_tokens}${fieldSeparator}${t('replay.pixel.drawer.tokenTotal')} ${usage.input_tokens + usage.output_tokens}`
         ))
-        .join('；');
+        .join(localeListSeparator(language));
 }
 
 function joinDetailBlocks(blocks: Array<[string, string]>): string {
@@ -3094,8 +3104,8 @@ export default function PixelReplay() {
         : formatLiveCommandError(liveCommandParseResult, t);
 
     const liveCommandTargetLabel = liveCommandParseResult.ok
-        ? describeInteractionTarget(liveCommandParseResult.target, profiles, liveCommandParseResult.mode, t)
-        : describeTargetSubject(fallbackCommandTarget, profiles, t);
+        ? describeInteractionTarget(liveCommandParseResult.target, profiles, liveCommandParseResult.mode, t, currentLanguage)
+        : describeTargetSubject(fallbackCommandTarget, profiles, t, currentLanguage);
 
     const liveCommandOptions = useMemo(() => (
         liveCompletionPrefix === '/'
@@ -3170,7 +3180,7 @@ export default function PixelReplay() {
             id: `${Date.now()}`,
             type: parsedCommand.mode,
             prompt: livePrompt.trim(),
-            targetLabel: describeInteractionTarget(parsedCommand.target, profiles, parsedCommand.mode, t),
+            targetLabel: describeInteractionTarget(parsedCommand.target, profiles, parsedCommand.mode, t, currentLanguage),
         };
         setLiveInteractions((items) => [...items, pending]);
         setLivePrompt('');
@@ -3779,7 +3789,7 @@ export default function PixelReplay() {
                                 <Text type="secondary">{t('replay.pixel.drawer.loadingStatus')}</Text>
                             </Space>
                         )}
-                        {renderPlainDetail(t('replay.pixel.drawer.tokenUsage'), formatTokenUsage(selectedAgentRuntime?.token_usage, t))}
+                        {renderPlainDetail(t('replay.pixel.drawer.tokenUsage'), formatTokenUsage(selectedAgentRuntime?.token_usage, t, currentLanguage))}
                         {renderPlainDetail(
                             t('replay.pixel.drawer.currentStatus'),
                             formatRuntimeInlineFields(
