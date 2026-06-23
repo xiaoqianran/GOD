@@ -3241,7 +3241,7 @@ export default function PixelReplay() {
         } finally {
             setLiveBusy(false);
         }
-    }, [fallbackCommandTarget, liveBaseUrl, livePrompt, liveTargetMentions, messageApi, profiles, t, withLiveWorkspace]);
+    }, [currentLanguage, fallbackCommandTarget, liveBaseUrl, livePrompt, liveTargetMentions, messageApi, profiles, t, withLiveWorkspace]);
 
     const frame = useMemo(() => {
         if (!walkableMap) {
