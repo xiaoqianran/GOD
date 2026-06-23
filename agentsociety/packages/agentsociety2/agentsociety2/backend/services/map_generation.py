@@ -994,7 +994,8 @@ def publish_draft(*, root: Path, draft_id: str, map_id: str | None = None) -> di
     if not validation.get("ok"):
         raise HTTPException(status_code=400, detail={"message": "Draft validation failed", "validation": validation})
     source = draft_package_path(root, draft_id)
-    publish_map_id, target = _unique_publish_path(root, map_id or str(state.get("map_id") or draft_id))
+    requested_map_id = sanitize_map_id(map_id or str(state.get("map_id") or draft_id), "generated_map")
+    publish_map_id, target = _unique_publish_path(root, requested_map_id)
     shutil.copytree(
         source,
         target,
@@ -1021,6 +1022,8 @@ def publish_draft(*, root: Path, draft_id: str, map_id: str | None = None) -> di
         raise HTTPException(status_code=400, detail={"message": "Published package validation failed", "validation": validation.as_dict()})
     return {
         "map_id": publish_map_id,
+        "requested_map_id": requested_map_id,
+        "renamed": publish_map_id != requested_map_id,
         "package_path": str(target),
         "manifest_path": str(manifest_path),
         "validation": validation.as_dict(),
