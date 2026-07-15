@@ -1005,12 +1005,44 @@ start_frontend() {
 
   log "Starting control room"
   : > "$LOG_DIR/frontend.log"
+  # code-server path proxy: force a clean Vite base. Never pass raw
+  # VSCODE_PROXY_URI templates that can leave stray "}" → %7D in asset URLs.
+  local vite_base="/"
+  if [[ -n "${VSCODE_PROXY_URI:-}" || -n "${CODE_SERVER_PARENT_PID:-}" || -n "${VSCODE_IPC_HOOK_CLI:-}" || "${GOD_FORCE_PROXY_BASE:-0}" == "1" ]]; then
+    vite_base="/proxy/${GOD_FRONTEND_PORT}/"
+  fi
+  if [[ -n "${VITE_BASE:-}" ]]; then
+    # Sanitize any caller-provided base to /proxy/<digits>/ or /
+    vite_base="$(
+      python3 - "$VITE_BASE" "$GOD_FRONTEND_PORT" <<'PY'
+import re, sys
+raw = sys.argv[1]
+port = sys.argv[2]
+raw = re.sub(r"%7[dD]", "", raw)
+raw = re.sub(r"[{}]", "", raw)
+m = re.search(r"/proxy/(\d+)/?", raw)
+print(f"/proxy/{m.group(1)}/" if m else (f"/proxy/{port}/" if "proxy" in raw else "/"))
+PY
+    )"
+  fi
+  log "Control room Vite base: $vite_base"
   local frontend_cmd
   frontend_cmd="cd $(shell_quote "$BACKEND_ROOT/frontend")"
   frontend_cmd+=" && export VITE_REPLAY_WORKSPACE_PATH=$(shell_quote "$LIVE_WORKSPACE_PATH")"
   frontend_cmd+=" && export VITE_DEFAULT_REPLAY_HYPOTHESIS_ID=$(shell_quote "$GOD_EXPERIMENT")"
   frontend_cmd+=" && export VITE_DEFAULT_REPLAY_EXPERIMENT_ID=$(shell_quote "$GOD_EXPERIMENT_RUN")"
-  frontend_cmd+=" && exec npm run dev -- --host 127.0.0.1 --port $(shell_quote "$GOD_FRONTEND_PORT") >> $(shell_quote "$LOG_DIR/frontend.log") 2>&1"
+  frontend_cmd+=" && export VITE_BASE=$(shell_quote "$vite_base")"
+  frontend_cmd+=" && export GOD_FORCE_PROXY_BASE=1"
+  # Drop potentially-corrupt VSCODE_PROXY_URI inside the child; VITE_BASE is enough.
+  frontend_cmd+=" && unset VSCODE_PROXY_URI"
+  # code-server port proxy often dials 0.0.0.0:<port>; bind all interfaces
+  # when path-proxy base is active so ECONNREFUSED 0.0.0.0:5174 cannot happen.
+  local vite_host="127.0.0.1"
+  if [[ "$vite_base" != "/" ]]; then
+    vite_host="0.0.0.0"
+  fi
+  frontend_cmd+=" && export VITE_HOST=$(shell_quote "$vite_host")"
+  frontend_cmd+=" && exec npm run dev -- --host $(shell_quote "$vite_host") --port $(shell_quote "$GOD_FRONTEND_PORT") --base $(shell_quote "$vite_base") >> $(shell_quote "$LOG_DIR/frontend.log") 2>&1"
   start_detached_service "god-frontend" "$FRONTEND_PID_FILE" "$frontend_cmd"
 
   wait_for_port "$GOD_FRONTEND_PORT" "Control room" 120

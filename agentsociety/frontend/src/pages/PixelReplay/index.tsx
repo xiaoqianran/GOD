@@ -33,7 +33,7 @@ import {
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import { fetchCustom } from '../../components/fetch';
+import { fetchCustom, resolveAppUrl } from '../../components/fetch';
 import LanguageToggle from '../../components/LanguageToggle';
 import {
     isMovingRuntimeStatus,
@@ -1150,7 +1150,7 @@ function characterSpritesFromProfiles(profiles: AgentProfile[]): ReplayMapCharac
         const appearance = asRecord(profile.profile?.appearance);
         const asset = asRecord(appearance?.character_asset);
         const name = String(asset?.sprite_name || appearance?.character_sprite || '').trim();
-        const imageUrl = String(asset?.image_url || '').trim();
+        const imageUrl = resolveAppUrl(String(asset?.image_url || '').trim());
         if (!name || !imageUrl || seen.has(name)) {
             return;
         }
@@ -1407,12 +1407,18 @@ async function loadWalkableMap(mapInfo: ReplayMapInfo, profiles: AgentProfile[],
         mapId: mapInfo.map_id,
         displayName: localizeMapDisplayName(mapInfo, language),
         tileSize: mapInfo.tile_size || TILE_SIZE,
-        tiledMapUrl: mapInfo.tiled_map_url,
-        previewUrl: mapInfo.preview_url,
-        tilesets: mapInfo.tilesets,
+        tiledMapUrl: resolveAppUrl(mapInfo.tiled_map_url),
+        previewUrl: resolveAppUrl(mapInfo.preview_url || ''),
+        tilesets: (mapInfo.tilesets || []).map((tileset) => ({
+            ...tileset,
+            image_url: resolveAppUrl(tileset.image_url),
+        })),
         characterSprites: mergeCharacterSprites(
             characterSpritesFromProfiles(profiles),
-            mapInfo.character_sprites || [],
+            (mapInfo.character_sprites || []).map((sprite) => ({
+                ...sprite,
+                image_url: resolveAppUrl(sprite.image_url),
+            })),
         ),
         locations: mapInfo.locations.map((location) => ({
             ...location,
