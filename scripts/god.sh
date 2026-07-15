@@ -984,6 +984,10 @@ start_backend() {
   backend_cmd+=" && export BACKEND_HOST=$(shell_quote "$GOD_BACKEND_HOST")"
   backend_cmd+=" && export BACKEND_PORT=$(shell_quote "$GOD_BACKEND_PORT")"
   backend_cmd+=" && export AGENTSOCIETY_LIVE_STEP_TIMEOUT=$(shell_quote "$GOD_LIVE_STEP_TIMEOUT")"
+  backend_cmd+=" && export AGENTSOCIETY_LIVE_INTERACTION_TIMEOUT=$(shell_quote "${AGENTSOCIETY_LIVE_INTERACTION_TIMEOUT:-300}")"
+  # Cap concurrent JiuwenClaw agent.plan calls per step (default in agent is 24).
+  # Allow all town agents to decide in parallel by default (10 residents).
+  backend_cmd+=" && export AGENTSOCIETY_JIUWENCLAW_REQUEST_CONCURRENCY=$(shell_quote "${AGENTSOCIETY_JIUWENCLAW_REQUEST_CONCURRENCY:-10}")"
   backend_cmd+=" && export BACKEND_LOG_LEVEL=$(shell_quote "$backend_log_level")"
   backend_cmd+=" && exec uv run python -m agentsociety2.backend.run --log-level $(shell_quote "$backend_log_level") >> $(shell_quote "$LOG_DIR/backend.log") 2>&1"
   start_detached_service "god-backend" "$BACKEND_PID_FILE" "$backend_cmd"
