@@ -55,7 +55,7 @@ import './style.css';
 const { Text, Title } = Typography;
 
 const TILE_SIZE = 32;
-const CHARACTER_ROOT = '/pixel-town/characters';
+const CHARACTER_ROOT = resolveAppUrl('/pixel-town/characters');
 const DEFAULT_HYPOTHESIS_ID = import.meta.env.VITE_DEFAULT_REPLAY_HYPOTHESIS_ID ?? 'god_town';
 const DEFAULT_EXPERIMENT_ID = import.meta.env.VITE_DEFAULT_REPLAY_EXPERIMENT_ID ?? '1';
 const DEFAULT_WORKSPACE_PATH = import.meta.env.VITE_REPLAY_WORKSPACE_PATH ?? '';
@@ -1424,6 +1424,7 @@ async function loadWalkableMap(mapInfo: ReplayMapInfo, profiles: AgentProfile[],
             ...location,
             name: localizeMapLocationName(mapInfo.map_id, location, language),
             aliases: localizeMapLocationAliases(mapInfo.map_id, location, language),
+            visual_asset_url: resolveAppUrl(location.visual_asset_url || ''),
         })),
         interactions: mapInfo.interactions.map((interaction) => (
             localizeMapInteraction(mapInfo.map_id, interaction, language) as ReplayMapInteraction

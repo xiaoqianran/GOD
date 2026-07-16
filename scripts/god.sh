@@ -643,7 +643,7 @@ stop_runtime_instance() {
 stop_all() {
   log "Stopping GOD services"
   if is_port_open "$GOD_BACKEND_PORT"; then
-    curl -fsS -X POST "$(stop_live_url)" >/dev/null 2>&1 || true
+    curl -fsS --max-time 10 -X POST "$(stop_live_url)" >/dev/null 2>&1 || true
   fi
   kill_pid_file "$FRONTEND_PID_FILE" "control room"
   kill_pid_file "$BACKEND_PID_FILE" "backend"
@@ -984,10 +984,6 @@ start_backend() {
   backend_cmd+=" && export BACKEND_HOST=$(shell_quote "$GOD_BACKEND_HOST")"
   backend_cmd+=" && export BACKEND_PORT=$(shell_quote "$GOD_BACKEND_PORT")"
   backend_cmd+=" && export AGENTSOCIETY_LIVE_STEP_TIMEOUT=$(shell_quote "$GOD_LIVE_STEP_TIMEOUT")"
-  backend_cmd+=" && export AGENTSOCIETY_LIVE_INTERACTION_TIMEOUT=$(shell_quote "${AGENTSOCIETY_LIVE_INTERACTION_TIMEOUT:-300}")"
-  # Cap concurrent JiuwenClaw agent.plan calls per step (default in agent is 24).
-  # Allow all town agents to decide in parallel by default (10 residents).
-  backend_cmd+=" && export AGENTSOCIETY_JIUWENCLAW_REQUEST_CONCURRENCY=$(shell_quote "${AGENTSOCIETY_JIUWENCLAW_REQUEST_CONCURRENCY:-10}")"
   backend_cmd+=" && export BACKEND_LOG_LEVEL=$(shell_quote "$backend_log_level")"
   backend_cmd+=" && exec uv run python -m agentsociety2.backend.run --log-level $(shell_quote "$backend_log_level") >> $(shell_quote "$LOG_DIR/backend.log") 2>&1"
   start_detached_service "god-backend" "$BACKEND_PID_FILE" "$backend_cmd"
@@ -1009,35 +1005,58 @@ start_frontend() {
 
   log "Starting control room"
   : > "$LOG_DIR/frontend.log"
-  # code-server path proxy: force a clean Vite base. Never pass raw
-  # VSCODE_PROXY_URI templates that can leave stray "}" → %7D in asset URLs.
+  # code-server strips this prefix before forwarding requests to Vite.
+  local proxy_uri="${VSCODE_PROXY_URI:-}"
   local vite_base="/"
-  if [[ -n "${VSCODE_PROXY_URI:-}" || -n "${CODE_SERVER_PARENT_PID:-}" || -n "${VSCODE_IPC_HOOK_CLI:-}" || "${GOD_FORCE_PROXY_BASE:-0}" == "1" ]]; then
+  if [[ -n "$proxy_uri" || -n "${CODE_SERVER_PARENT_PID:-}" || -n "${VSCODE_IPC_HOOK_CLI:-}" ]]; then
     vite_base="/proxy/${GOD_FRONTEND_PORT}/"
   fi
   if [[ -n "${VITE_BASE:-}" ]]; then
-    # Sanitize any caller-provided base to /proxy/<digits>/ or /
-    vite_base="$(
-      python3 - "$VITE_BASE" "$GOD_FRONTEND_PORT" <<'PY'
-import re, sys
-raw = sys.argv[1]
-port = sys.argv[2]
-raw = re.sub(r"%7[dD]", "", raw)
-raw = re.sub(r"[{}]", "", raw)
-m = re.search(r"/proxy/(\d+)/?", raw)
-print(f"/proxy/{m.group(1)}/" if m else (f"/proxy/{port}/" if "proxy" in raw else "/"))
-PY
-    )"
+    if [[ "$VITE_BASE" == "/" ]]; then
+      vite_base="/"
+    elif [[ "$VITE_BASE" =~ ^/proxy/([0-9]+)/?$ ]]; then
+      vite_base="/proxy/${BASH_REMATCH[1]}/"
+    else
+      log "Ignoring invalid VITE_BASE; expected / or /proxy/<port>/"
+    fi
   fi
   log "Control room Vite base: $vite_base"
+  local vite_allowed_host=""
+  local vite_hmr_protocol=""
+  local vite_hmr_client_port=""
+  if [[ -n "$proxy_uri" ]]; then
+    local vite_proxy_settings
+    vite_proxy_settings="$(
+      python3 - "$proxy_uri" <<'PY'
+import re
+import sys
+from urllib.parse import urlsplit
+
+try:
+    parsed = urlsplit(sys.argv[1])
+    hostname = parsed.hostname or ""
+    valid = re.fullmatch(r"[A-Za-z0-9.-]+", hostname) and parsed.scheme in {"http", "https"}
+    if valid:
+        protocol = "wss" if parsed.scheme == "https" else "ws"
+        port = parsed.port or (443 if protocol == "wss" else 80)
+        print(hostname, protocol, port, sep="\t")
+except ValueError:
+    pass
+PY
+    )"
+    IFS=$'\t' read -r vite_allowed_host vite_hmr_protocol vite_hmr_client_port <<< "$vite_proxy_settings"
+  fi
   local frontend_cmd
   frontend_cmd="cd $(shell_quote "$BACKEND_ROOT/frontend")"
   frontend_cmd+=" && export VITE_REPLAY_WORKSPACE_PATH=$(shell_quote "$LIVE_WORKSPACE_PATH")"
   frontend_cmd+=" && export VITE_DEFAULT_REPLAY_HYPOTHESIS_ID=$(shell_quote "$GOD_EXPERIMENT")"
   frontend_cmd+=" && export VITE_DEFAULT_REPLAY_EXPERIMENT_ID=$(shell_quote "$GOD_EXPERIMENT_RUN")"
   frontend_cmd+=" && export VITE_BASE=$(shell_quote "$vite_base")"
-  frontend_cmd+=" && export GOD_FORCE_PROXY_BASE=1"
-  # Drop potentially-corrupt VSCODE_PROXY_URI inside the child; VITE_BASE is enough.
+  if [[ -n "$vite_allowed_host" ]]; then
+    frontend_cmd+=" && export __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS=$(shell_quote "$vite_allowed_host")"
+    frontend_cmd+=" && export VITE_HMR_PROTOCOL=$(shell_quote "$vite_hmr_protocol")"
+    frontend_cmd+=" && export VITE_HMR_CLIENT_PORT=$(shell_quote "$vite_hmr_client_port")"
+  fi
   frontend_cmd+=" && unset VSCODE_PROXY_URI"
   # code-server port proxy often dials 0.0.0.0:<port>; bind all interfaces
   # when path-proxy base is active so ECONNREFUSED 0.0.0.0:5174 cannot happen.

@@ -64,33 +64,6 @@ def _is_truthy(value: str) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _litellm_openai_params(model: str, api_key: str, api_base: str) -> dict[str, Any]:
-    """Build OpenAI-compatible litellm_params for a deployment.
-
-    Model names that already include a provider/org slash (e.g.
-    ``openai/gpt-oss-120b`` on NewAPI-style gateways) must be passed to
-    LiteLLM as ``openai/<full-model-id>`` so the upstream ``model`` field
-    keeps the slash form. Plain names like ``gpt-4o-mini`` become
-    ``openai/gpt-4o-mini``.
-
-    Some reverse proxies (Cloudflare) block Python/OpenAI default
-    User-Agents with 403; send a curl-like UA by default.
-    """
-    headers = {
-        "User-Agent": os.getenv(
-            "AGENTSOCIETY_LLM_USER_AGENT",
-            "curl/8.5.0",
-        )
-    }
-    return {
-        "model": f"openai/{model}",
-        "api_key": api_key,
-        "api_base": api_base,
-        "extra_headers": headers,
-        "default_headers": headers,
-    }
-
-
 def _disable_mem0_telemetry_if_needed() -> None:
     """必要时强制禁用 mem0 遥测。
 
@@ -494,21 +467,27 @@ class Config:
             model_list = [
                 {
                     "model_name": analysis_model,
-                    "litellm_params": _litellm_openai_params(
-                        analysis_model, analysis_api_key, analysis_api_base
-                    ),
+                    "litellm_params": {
+                        "model": f"openai/{analysis_model}",
+                        "api_key": analysis_api_key,
+                        "api_base": analysis_api_base,
+                    },
                 },
                 {
                     "model_name": default_model,
-                    "litellm_params": _litellm_openai_params(
-                        default_model, default_api_key, default_api_base
-                    ),
+                    "litellm_params": {
+                        "model": f"openai/{default_model}",
+                        "api_key": default_api_key,
+                        "api_base": default_api_base,
+                    },
                 },
                 {
                     "model_name": nano_model,
-                    "litellm_params": _litellm_openai_params(
-                        nano_model, nano_api_key, nano_api_base
-                    ),
+                    "litellm_params": {
+                        "model": f"openai/{nano_model}",
+                        "api_key": nano_api_key,
+                        "api_base": nano_api_base,
+                    },
                 },
             ]
 
@@ -561,21 +540,27 @@ class Config:
             model_list = [
                 {
                     "model_name": coder_model,
-                    "litellm_params": _litellm_openai_params(
-                        coder_model, coder_api_key, coder_api_base
-                    ),
+                    "litellm_params": {
+                        "model": f"openai/{coder_model}",
+                        "api_key": coder_api_key,
+                        "api_base": coder_api_base,
+                    },
                 },
                 {
                     "model_name": default_model,
-                    "litellm_params": _litellm_openai_params(
-                        default_model, default_api_key, default_api_base
-                    ),
+                    "litellm_params": {
+                        "model": f"openai/{default_model}",
+                        "api_key": default_api_key,
+                        "api_base": default_api_base,
+                    },
                 },
                 {
                     "model_name": nano_model,
-                    "litellm_params": _litellm_openai_params(
-                        nano_model, nano_api_key, nano_api_base
-                    ),
+                    "litellm_params": {
+                        "model": f"openai/{nano_model}",
+                        "api_key": nano_api_key,
+                        "api_base": nano_api_base,
+                    },
                 },
             ]
 
@@ -620,15 +605,19 @@ class Config:
             model_list = [
                 {
                     "model_name": default_model,
-                    "litellm_params": _litellm_openai_params(
-                        default_model, default_api_key, default_api_base
-                    ),
+                    "litellm_params": {
+                        "model": f"openai/{default_model}",
+                        "api_key": default_api_key,
+                        "api_base": default_api_base,
+                    },
                 },
                 {
                     "model_name": nano_model,
-                    "litellm_params": _litellm_openai_params(
-                        nano_model, nano_api_key, nano_api_base
-                    ),
+                    "litellm_params": {
+                        "model": f"openai/{nano_model}",
+                        "api_key": nano_api_key,
+                        "api_base": nano_api_base,
+                    },
                 },
             ]
 
@@ -661,7 +650,11 @@ class Config:
             model_list = [
                 {
                     "model_name": model,
-                    "litellm_params": _litellm_openai_params(model, api_key, api_base),
+                    "litellm_params": {
+                        "model": f"openai/{model}",
+                        "api_key": api_key,
+                        "api_base": api_base,
+                    },
                 },
             ]
             logger.info("Nano LLM configured: model=%s api_base=%s", model, api_base)

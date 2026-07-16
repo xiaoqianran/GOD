@@ -6,21 +6,18 @@ export const WITH_AUTH = import.meta.env.VITE_WITH_AUTH === 'true';
 
 /**
  * When the UI is served under a path proxy (code-server: /proxy/5174/),
- * absolute /api/... calls would hit the site root and miss Vite's proxy.
- * Prefix same-origin API paths with import.meta.env.BASE_URL.
+ * absolute same-origin URLs would hit the site root and miss Vite's proxy.
+ * Prefix them with import.meta.env.BASE_URL.
  */
 export const resolveAppUrl = (url: string): string => {
-    if (!url || /^https?:\/\//i.test(url) || url.startsWith('//')) {
+    if (!url || !url.startsWith('/') || url.startsWith('//')) {
         return url;
     }
     const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
-    if (!base || base === '') {
+    if (!base || url === base || url.startsWith(`${base}/`)) {
         return url;
     }
-    if (url.startsWith('/api') || url.startsWith('/file-api')) {
-        return `${base}${url}`;
-    }
-    return url;
+    return `${base}${url}`;
 };
 
 export const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
@@ -41,7 +38,7 @@ export const fetchCustom = async (url: string, options: RequestInit = {}) => {
 
 export const postDownload = async (url: string) => {
     const form = document.createElement('form');
-    form.action = url;
+    form.action = resolveAppUrl(url);
     form.method = 'POST';
     form.target = '_blank';
     document.body.appendChild(form);
@@ -57,7 +54,7 @@ export const postDownloadWithAuth = async (url: string) => {
     }
     const authorization = `Bearer ${token}`;
     const form = document.createElement('form');
-    form.action = url;
+    form.action = resolveAppUrl(url);
     form.method = 'POST';
     form.target = '_blank';
     form.innerHTML = '<input type="hidden" name="authorization" value="' + authorization + '">';

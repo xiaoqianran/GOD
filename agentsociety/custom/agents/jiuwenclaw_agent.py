@@ -1723,7 +1723,6 @@ Initialization example:
             origin=origin,
             ping_interval=30,
             ping_timeout=300,
-            max_size=16 * 1024 * 1024,
         )
 
     def _build_ws_origin(self, uri: str) -> str | None:
